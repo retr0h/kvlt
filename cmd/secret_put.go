@@ -95,6 +95,12 @@ func runSecretPut(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	out := os.Stdout
+	_, _ = fmt.Fprintln(out, cli.Success(out, fmt.Sprintf("stored %s in vault %s %s",
+		cli.Accent(out, secretPutKey),
+		cli.Accent(out, secretPutVault),
+		cli.Mute(out, "(via "+mode+")"))))
+
 	logger.Info("secret stored",
 		"vault", secretPutVault,
 		"key", secretPutKey,

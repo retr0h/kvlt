@@ -60,9 +60,10 @@ Use cases:
 }
 
 var (
-	envVault    string
-	envOnlyKeys []string
-	envPrefix   string
+	envVault      string
+	envOnlyKeys   []string
+	envPrefix     string
+	envPrivateKey string
 )
 
 func init() {
@@ -72,6 +73,8 @@ func init() {
 		"comma-separated list of keys to export (default: all)")
 	envCmd.Flags().StringVar(&envPrefix, "prefix", "",
 		"prefix prepended to every exported variable name")
+	envCmd.Flags().StringVarP(&envPrivateKey, "private-key", "i", "",
+		"SSH private key to decrypt with (overrides ~/.ssh/id_* auto-discovery; env KVLT_PRIVATE_KEY)")
 	_ = envCmd.MarkFlagRequired("vault")
 	rootCmd.AddCommand(envCmd)
 }
@@ -79,7 +82,7 @@ func init() {
 func runEnv(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
 
-	store, err := newStore()
+	store, err := newStoreForRead(envPrivateKey)
 	if err != nil {
 		return err
 	}

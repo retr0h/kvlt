@@ -25,6 +25,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"github.com/retr0h/kvlt/internal/cli"
 )
 
 // vaultListCmd prints every configured vault in the repository.
@@ -48,16 +50,28 @@ func runVaultList(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	out := os.Stdout
 	if len(configs) == 0 {
-		fmt.Fprintln(os.Stderr, "no vaults configured — run `kvlt vault create local <name>`")
+		fmt.Fprintln(os.Stderr, cli.Mute(os.Stderr,
+			"no vaults configured — run `kvlt vault create --name dev`"))
 		return nil
 	}
+	// Header row in MUTED so the data rows pop. Names accent-colored
+	// because they're the user-facing handles operators reference; type
+	// stays plain NC; recipient count goes MUTED (secondary metadata).
+	_, _ = fmt.Fprintf(out, "%s  %s  %s\n",
+		cli.Mute(out, fmt.Sprintf("%-20s", "NAME")),
+		cli.Mute(out, fmt.Sprintf("%-20s", "TYPE")),
+		cli.Mute(out, "RECIPIENTS"))
 	for _, c := range configs {
 		recCount := 0
 		if rs, ok := c.Settings["recipients"].([]any); ok {
 			recCount = len(rs)
 		}
-		fmt.Printf("%-20s  %-20s  %d recipient(s)\n", c.Name, c.Type, recCount)
+		_, _ = fmt.Fprintf(out, "%s  %-20s  %s\n",
+			cli.Accent(out, fmt.Sprintf("%-20s", c.Name)),
+			c.Type,
+			cli.Mute(out, fmt.Sprintf("%d", recCount)))
 	}
 	return nil
 }

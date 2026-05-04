@@ -73,8 +73,9 @@ where the secrets should not persist after the command exits:
 }
 
 var (
-	runVault    string
-	runOnlyKeys []string
+	runVault      string
+	runOnlyKeys   []string
+	runPrivateKey string
 )
 
 func init() {
@@ -82,6 +83,8 @@ func init() {
 		"vault whose secrets to inject (required)")
 	runCmd.Flags().StringSliceVar(&runOnlyKeys, "only", nil,
 		"comma-separated list of keys to inject (default: all)")
+	runCmd.Flags().StringVarP(&runPrivateKey, "private-key", "i", "",
+		"SSH private key to decrypt with (overrides ~/.ssh/id_* auto-discovery; env KVLT_PRIVATE_KEY)")
 	_ = runCmd.MarkFlagRequired("vault")
 	rootCmd.AddCommand(runCmd)
 }
@@ -91,7 +94,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	childArgv := args[dash:]
 
 	ctx := context.Background()
-	store, err := newStore()
+	store, err := newStoreForRead(runPrivateKey)
 	if err != nil {
 		return err
 	}

@@ -28,13 +28,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/retr0h/kvlt/pkg/kvlt"
+	"github.com/retr0h/kvlt/internal/cli"
 )
 
 var (
 	vaultCreateType       string
 	vaultCreateName       string
-	vaultCreateRecipients []string
+	vaultCreatePublicKeys []string
 )
 
 // vaultCreateCmd creates a new vault. Every input is a flag — no
@@ -50,14 +50,14 @@ var vaultCreateCmd = &cobra.Command{
 Supported types:
   local   age-encrypted local files (default zero-cloud backend)
 
-Recipients default to the current user's ~/.ssh/id_ed25519.pub. Pass
---recipient repeatedly to encrypt to additional teammates / CI keys
+Public keys default to the current user's ~/.ssh/id_ed25519.pub. Pass
+--public-key repeatedly to encrypt to additional teammates / CI keys
 — any one of the matching SSH private keys can decrypt.
 
 Examples:
   kvlt vault create --name dev
-  kvlt vault create --type local --name prod --recipient ~/.ssh/team.pub
-  kvlt vault create --name shared -r ~/.ssh/alice.pub -r ~/.ssh/bob.pub`,
+  kvlt vault create --type local --name prod --public-key ~/.ssh/team.pub
+  kvlt vault create --name shared -p ~/.ssh/alice.pub -p ~/.ssh/bob.pub`,
 	Args: cobra.NoArgs,
 	RunE: runVaultCreate,
 }
@@ -67,31 +67,14 @@ func init() {
 		"backend type — `local` is the only one in the base binary; cloud backends require build tags")
 	vaultCreateCmd.Flags().StringVarP(&vaultCreateName, "name", "n", "",
 		"vault name (required) — referenced by every later put/get/list")
-	vaultCreateCmd.Flags().StringSliceVarP(&vaultCreateRecipients, "recipient", "r", nil,
+	vaultCreateCmd.Flags().StringSliceVarP(&vaultCreatePublicKeys, "public-key", "p", nil,
 		"SSH or age public key, or path to a .pub file (repeatable). Defaults to ~/.ssh/id_ed25519.pub")
 	_ = vaultCreateCmd.MarkFlagRequired("name")
 	vaultCmd.AddCommand(vaultCreateCmd)
 }
 
 func runVaultCreate(_ *cobra.Command, _ []string) error {
-	vaultType := vaultCreateType
-	// `local` is the user-facing alias; pkg/kvlt internally uses
-	// local_encryption to match swamp's identifier so vaults/ paths
-	// and YAML files are wire-compatible. Reject any other spelling
-	// up front with a hint — `local-encryption` (hyphen) is the
-	// common typo.
-	switch vaultType {
-	case "local":
-		vaultType = kvlt.TypeLocalEncryption
-	case kvlt.TypeLocalEncryption:
-		// allowed for round-trip from existing on-disk configs
-	case "local-encryption":
-		return fmt.Errorf(
-			"did you mean `--type local`? (kvlt accepts `local` as the type name; the on-disk identifier is `local_encryption` with an underscore)",
-		)
-	}
-
-	recipients, err := resolveRecipientFlags(vaultCreateRecipients)
+	recipients, err := resolvePublicKeyFlags(vaultCreatePublicKeys)
 	if err != nil {
 		return err
 	}
@@ -100,10 +83,22 @@ func runVaultCreate(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := store.Create(vaultCreateName, vaultType, recipients)
+	// pkg/kvlt's CanonicalizeType handles the `local` → `local_encryption`
+	// alias and the `local-encryption` typo. Anything else falls
+	// through to the registry's "unknown type" error.
+	cfg, err := store.Create(vaultCreateName, vaultCreateType, recipients)
 	if err != nil {
 		return err
 	}
+
+	// Human success line — themed; the structured slog line below is
+	// for machine consumers (logging pipelines, CI). Two channels, one
+	// event.
+	out := os.Stdout
+	_, _ = fmt.Fprintln(out, cli.Success(out, fmt.Sprintf("vault %s created (%s, %d recipient(s))",
+		cli.Accent(out, cfg.Name),
+		cli.Mute(out, cfg.Type),
+		len(recipients))))
 
 	logger.Info("vault created",
 		"name", cfg.Name,
@@ -114,15 +109,15 @@ func runVaultCreate(_ *cobra.Command, _ []string) error {
 	return nil
 }
 
-// resolveRecipientFlags turns --recipient flag values (or the
+// resolvePublicKeyFlags turns --public-key flag values (or the
 // default ~/.ssh/id_ed25519.pub fallback) into the canonical
 // recipient strings Store.Create expects. Each flag value is
 // either an authorized_keys-style SSH line, an `age1…` recipient,
-// or a path to a `.pub` file containing one or more recipients —
+// or a path to a `.pub` file containing one or more public keys —
 // we sniff for the file first. Comments and blank lines inside
 // .pub files are stripped so the YAML stores only meaningful
-// recipient strings.
-func resolveRecipientFlags(flags []string) ([]string, error) {
+// public-key strings.
+func resolvePublicKeyFlags(flags []string) ([]string, error) {
 	if len(flags) == 0 {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -131,7 +126,7 @@ func resolveRecipientFlags(flags []string) ([]string, error) {
 		defaultPath := filepath.Join(home, ".ssh", "id_ed25519.pub")
 		if _, err := os.Stat(defaultPath); err != nil {
 			return nil, fmt.Errorf(
-				"no recipient passed and %s does not exist — pass --recipient or run `ssh-keygen -t ed25519`",
+				"no public key passed and %s does not exist — pass --public-key or run `ssh-keygen -t ed25519`",
 				defaultPath,
 			)
 		}
@@ -159,7 +154,7 @@ func resolveRecipientFlags(flags []string) ([]string, error) {
 		}
 	}
 	if len(out) == 0 {
-		return nil, fmt.Errorf("no recipients provided")
+		return nil, fmt.Errorf("no public keys provided")
 	}
 	return out, nil
 }

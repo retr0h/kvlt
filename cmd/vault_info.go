@@ -22,12 +22,15 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/retr0h/kvlt/internal/cli"
 	"github.com/retr0h/kvlt/pkg/kvlt"
 )
 
+// vaultInfoName is the --name flag value (vault to inspect).
 var vaultInfoName string
 
 // vaultInfoCmd prints one vault's full config — id, type, every
@@ -57,20 +60,42 @@ func runVaultInfo(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+	var match *kvlt.Config
 	for _, c := range configs {
-		if c.Name != vaultInfoName {
-			continue
+		if c.Name == vaultInfoName {
+			match = c
+			break
 		}
-		fmt.Printf("name:        %s\n", c.Name)
-		fmt.Printf("type:        %s\n", c.Type)
-		fmt.Printf("id:          %s\n", c.ID)
-		fmt.Println("recipients:")
-		if rs, ok := c.Settings["recipients"].([]any); ok {
-			for _, r := range rs {
-				fmt.Printf("  - %v\n", r)
+	}
+	if match == nil {
+		return fmt.Errorf("%w: %q", kvlt.ErrVaultNotFound, vaultInfoName)
+	}
+
+	out := os.Stdout
+	const width = 13 // "recipients:" + space — keeps every label aligned
+
+	cli.Field(out, width, "name", cli.Accent(out, match.Name))
+	cli.Field(out, width, "type", match.Type)
+	cli.Field(out, width, "id", cli.Mute(out, match.ID))
+
+	provider, err := store.Open(match.Name)
+	if err != nil {
+		return err
+	}
+	if d, ok := provider.(kvlt.Describer); ok {
+		for _, f := range d.Describe() {
+			switch len(f.Values) {
+			case 0:
+				continue
+			case 1:
+				cli.Field(out, width, f.Label, f.Values[0])
+			default:
+				_, _ = fmt.Fprintf(out, "%s\n", cli.Mute(out, f.Label+":"))
+				for _, v := range f.Values {
+					_, _ = fmt.Fprintf(out, "  %s %s\n", cli.Mute(out, "-"), v)
+				}
 			}
 		}
-		return nil
 	}
-	return fmt.Errorf("%w: %q", kvlt.ErrVaultNotFound, vaultInfoName)
+	return nil
 }

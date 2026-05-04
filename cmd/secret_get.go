@@ -30,9 +30,10 @@ import (
 )
 
 var (
-	secretGetVault string
-	secretGetKey   string
-	secretGetJSON  bool
+	secretGetVault      string
+	secretGetKey        string
+	secretGetJSON       bool
+	secretGetPrivateKey string
 )
 
 // secretGetCmd retrieves a secret. Output is **raw bytes on stdout,
@@ -58,13 +59,15 @@ func init() {
 		"secret key to retrieve (required)")
 	secretGetCmd.Flags().BoolVar(&secretGetJSON, "json", false,
 		"emit {vault, key, value} JSON instead of the raw secret")
+	secretGetCmd.Flags().StringVarP(&secretGetPrivateKey, "private-key", "i", "",
+		"SSH private key to decrypt with (overrides ~/.ssh/id_* auto-discovery; env KVLT_PRIVATE_KEY)")
 	_ = secretGetCmd.MarkFlagRequired("vault")
 	_ = secretGetCmd.MarkFlagRequired("key")
 	secretCmd.AddCommand(secretGetCmd)
 }
 
 func runSecretGet(_ *cobra.Command, _ []string) error {
-	store, err := newStore()
+	store, err := newStoreForRead(secretGetPrivateKey)
 	if err != nil {
 		return err
 	}
