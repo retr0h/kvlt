@@ -31,8 +31,8 @@
   "repos": [
     {
       "name": "kvlt",
-      "description": "🔐 Pluggable secrets vault — local AES-GCM by default, cloud backends optional.",
-      "topics": ["cli", "golang", "secrets", "vault", "secrets-management", "encryption", "aes-gcm", "aws-secrets-manager", "1password", "azure-key-vault", "hashicorp-vault", "self-hosted", "zero-dependency", "kvlt"]
+      "description": "🔐 Pluggable secrets vault — age + SSH keys by default, cloud backends optional.",
+      "topics": ["cli", "golang", "secrets", "vault", "secrets-management", "encryption", "age", "ssh-keys", "aws-secrets-manager", "self-hosted", "zero-dependency", "kvlt"]
     }
   ]
 }

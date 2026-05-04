@@ -150,13 +150,16 @@ http_get() {
     fi
 }
 
-# fetch downloads $url to $output, using the styled progress bar when
-# possible and degrading gracefully otherwise. Either curl or wget is
-# acceptable; the progress UI only fires for the curl + TTY path.
+# fetch downloads $url to $output. The styled progress bar fires only
+# when (1) curl is available, (2) stderr is a TTY, and (3) the caller
+# opted in via "progress" as $3. Tiny side fetches (the checksums file)
+# pass anything else; their bar would jump to 100% instantly and just
+# spam scrollback below the meaningful binary-download bar.
 fetch() {
     local url="$1"
     local output="$2"
-    if have curl && [ -t 2 ]; then
+    local mode="${3:-quiet}"
+    if [ "$mode" = "progress" ] && have curl && [ -t 2 ]; then
         download_with_progress "$url" "$output" || curl -fsSL -o "$output" "$url"
     elif have curl; then
         curl -fsSL -o "$output" "$url"
@@ -238,7 +241,7 @@ download() {
     asset=kvlt_${version}_${os}_${arch}
 
     print_message info "\n${MUTED}Installing ${NC}kvlt ${MUTED}version: ${NC}$version"
-    fetch "$base/$asset" "$tmp/kvlt" \
+    fetch "$base/$asset" "$tmp/kvlt" progress \
         || err "failed to download $base/$asset"
     fetch "$base/checksums.txt" "$tmp/checksums.txt" \
         || err "failed to download $base/checksums.txt"
@@ -246,6 +249,7 @@ download() {
 
 verify_checksum() {
     asset=kvlt_${version}_${os}_${arch}
+    printf "${MUTED}Verifying checksum…${NC}\n"
     expected=$(grep " $asset\$" "$tmp/checksums.txt" | awk '{print $1}')
     if [ -z "$expected" ]; then
         err "no checksum entry for $asset in checksums.txt"
