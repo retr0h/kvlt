@@ -60,8 +60,16 @@ func runThemes(_ *cobra.Command, _ []string) error {
 			cli.Mute(out, "theme:"),
 			cli.Accent(out, name))
 		_, _ = fmt.Fprint(out, cli.Banner(out))
-		_, _ = fmt.Fprintln(out, cli.Success(out,
-			"vault "+cli.Accent(out, "dev")+" created "+cli.Mute(out, "(local_encryption, 1 recipient)")))
+		_, _ = fmt.Fprintln(out, cli.Success(
+			out,
+			"vault "+cli.Accent(
+				out,
+				"dev",
+			)+" created "+cli.Mute(
+				out,
+				"(local_encryption, 1 recipient)",
+			),
+		))
 		_, _ = fmt.Fprintln(out, cli.Failure(out,
 			cli.Err(out, "vault not found")+": "+cli.Mute(out, "\"absent\"")))
 		_, _ = fmt.Fprintln(out, cli.Info(out, "→ ")+

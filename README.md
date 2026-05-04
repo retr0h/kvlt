@@ -17,6 +17,8 @@
 </pre>
 </h1>
 
+<p align="center"><strong>kvlt</strong> /kʌlt/ <em>noun</em> — pronounced “cult”; the <em>v</em> stands in for <em>u</em>, the old-Norse-runic spelling popularized by black-metal aesthetics (cf. <em>trve kvlt</em>).</p>
+
 <p align="center">🔐 Pluggable secrets vault. Local-first. No daemon.</p>
 
 A single-binary secrets vault for projects that don't have HashiCorp
