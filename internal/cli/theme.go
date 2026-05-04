@@ -27,7 +27,7 @@ import (
 	"sort"
 	"strings"
 
-	"golang.org/x/term"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Theme is a six-role palette covering every place kvlt emits styled
@@ -42,22 +42,34 @@ import (
 //	Banner* the two banner lines — Top/Bot let themes decide whether
 //	        the brand color sits above or below the implicit midline
 //
-// Each field is a raw SGR escape string, applied as `code + text + reset`
-// at render time. Empty string disables coloring for that role,
-// which is how the no-color and NO_COLOR fallbacks short-circuit.
+// Each role is a lipgloss.Style. lipgloss handles NO_COLOR and TTY
+// detection (via termenv) so we don't reinvent it here. Empty
+// styles fall through to plain text.
 type Theme struct {
 	Name      string
-	Mute      string
-	Accent    string
-	OK        string
-	Err       string
-	Info      string
-	BannerTop string
-	BannerBot string
+	Mute      lipgloss.Style
+	Accent    lipgloss.Style
+	OK        lipgloss.Style
+	Err       lipgloss.Style
+	Info      lipgloss.Style
+	BannerTop lipgloss.Style
+	BannerBot lipgloss.Style
 }
 
+// fg is shorthand for `lipgloss.NewStyle().Foreground(...)` so theme
+// definitions stay scannable. Color values are xterm-256 ANSI
+// indexes (matches install.sh exactly), or hex strings if a theme
+// wants 24-bit truecolor.
+func fg(c string) lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(c))
+}
+
+// faint is for the Mute role — uses the dim attribute rather than a
+// specific color so it adapts to the user's terminal background.
+var faint = lipgloss.NewStyle().Faint(true)
+
 // Built-in themes. Pick one with `KVLT_THEME=<name>` (default
-// "opencode"). Adding a new theme is a single Theme literal here +
+// "ash"). Adding a new theme is a single Theme literal here +
 // register in themes.
 var (
 	// ThemeOpencode mirrors opencode's installer palette — friendly
@@ -65,13 +77,13 @@ var (
 	// `curl … | bash` and the installed binary.
 	ThemeOpencode = Theme{
 		Name:      "opencode",
-		Mute:      "\033[0;2m",
-		Accent:    "\033[38;5;214m", // orange
-		OK:        "\033[38;5;114m", // soft green
-		Err:       "\033[0;31m",
-		Info:      "\033[38;5;110m", // cyan
-		BannerTop: "\033[38;5;240m", // grey
-		BannerBot: "\033[38;5;214m", // orange
+		Mute:      faint,
+		Accent:    fg("214"), // orange
+		OK:        fg("114"), // soft green
+		Err:       fg("203"),
+		Info:      fg("110"), // cyan
+		BannerTop: faint,
+		BannerBot: fg("214"), // orange
 	}
 
 	// ThemeMetal leans into the kvlt/cult metal aesthetic — bone
@@ -79,13 +91,13 @@ var (
 	// red so they're distinct from the dull-red accent.
 	ThemeMetal = Theme{
 		Name:      "metal",
-		Mute:      "\033[38;5;253;2m", // bone, faint
-		Accent:    "\033[38;5;124m",   // blood red
-		OK:        "\033[38;5;108m",   // ash green
-		Err:       "\033[38;5;203m",   // brighter red — distinct from accent
-		Info:      "\033[38;5;67m",    // cold steel blue-grey
-		BannerTop: "\033[38;5;253;2m", // bone faint
-		BannerBot: "\033[38;5;124m",   // blood red
+		Mute:      faint,
+		Accent:    fg("124"), // blood red
+		OK:        fg("108"), // ash green
+		Err:       fg("203"), // brighter red — distinct from accent
+		Info:      fg("67"),  // cold steel blue-grey
+		BannerTop: faint,
+		BannerBot: fg("124"),
 	}
 
 	// ThemeCrimson is metal with the saturation cranked — brighter
@@ -93,13 +105,13 @@ var (
 	// still firmly in the "danger / dark" register.
 	ThemeCrimson = Theme{
 		Name:      "crimson",
-		Mute:      "\033[38;5;245m",
-		Accent:    "\033[38;5;160m", // bright crimson
-		OK:        "\033[38;5;107m",
-		Err:       "\033[38;5;196m",
-		Info:      "\033[38;5;103m",
-		BannerTop: "\033[38;5;245m",
-		BannerBot: "\033[38;5;160m",
+		Mute:      faint,
+		Accent:    fg("160"), // bright crimson
+		OK:        fg("107"),
+		Err:       fg("196"),
+		Info:      fg("103"),
+		BannerTop: faint,
+		BannerBot: fg("160"),
 	}
 
 	// ThemeNoir is monochrome — only greys and a single white accent.
@@ -107,13 +119,13 @@ var (
 	// remain red because no-color in errors is unsafe ergonomics.
 	ThemeNoir = Theme{
 		Name:      "noir",
-		Mute:      "\033[38;5;240m",
-		Accent:    "\033[38;5;255m", // bright white
-		OK:        "\033[38;5;250m",
-		Err:       "\033[38;5;203m",
-		Info:      "\033[38;5;245m",
-		BannerTop: "\033[38;5;240m",
-		BannerBot: "\033[38;5;255m",
+		Mute:      faint,
+		Accent:    fg("255"), // bright white
+		OK:        fg("250"),
+		Err:       fg("203"),
+		Info:      fg("245"),
+		BannerTop: faint,
+		BannerBot: fg("255"),
 	}
 
 	// ThemeForge is the middle-ground compromise — orange ember kept
@@ -121,13 +133,13 @@ var (
 	// muted greens. Reads industrial rather than friendly.
 	ThemeForge = Theme{
 		Name:      "forge",
-		Mute:      "\033[38;5;244m",
-		Accent:    "\033[38;5;208m", // ember orange
-		OK:        "\033[38;5;107m",
-		Err:       "\033[38;5;167m",
-		Info:      "\033[38;5;67m",
-		BannerTop: "\033[38;5;244m",
-		BannerBot: "\033[38;5;208m",
+		Mute:      faint,
+		Accent:    fg("208"), // ember orange
+		OK:        fg("107"),
+		Err:       fg("167"),
+		Info:      fg("67"),
+		BannerTop: faint,
+		BannerBot: fg("208"),
 	}
 
 	// ThemeAsh — the desaturated take on the metal aesthetic. Brick-
@@ -136,13 +148,13 @@ var (
 	// a denim jacket.
 	ThemeAsh = Theme{
 		Name:      "ash",
-		Mute:      "\033[38;5;245m",
-		Accent:    "\033[38;5;131m", // dusty brick
-		OK:        "\033[38;5;108m", // ash green
-		Err:       "\033[38;5;167m",
-		Info:      "\033[38;5;103m", // muted blue-grey
-		BannerTop: "\033[38;5;245m",
-		BannerBot: "\033[38;5;131m",
+		Mute:      faint,
+		Accent:    fg("131"), // dusty brick
+		OK:        fg("108"), // ash green
+		Err:       fg("167"),
+		Info:      fg("103"), // muted blue-grey
+		BannerTop: faint,
+		BannerBot: fg("131"),
 	}
 
 	// ThemeOxblood pushes red as far toward black as it can go while
@@ -153,13 +165,13 @@ var (
 	// accent.
 	ThemeOxblood = Theme{
 		Name:      "oxblood",
-		Mute:      "\033[38;5;240m",
-		Accent:    "\033[38;5;88m", // very dark wine
-		OK:        "\033[38;5;100m",
-		Err:       "\033[38;5;124m", // brighter than accent
-		Info:      "\033[38;5;60m",  // dusty navy
-		BannerTop: "\033[38;5;240m",
-		BannerBot: "\033[38;5;88m",
+		Mute:      faint,
+		Accent:    fg("88"), // very dark wine
+		OK:        fg("100"),
+		Err:       fg("124"), // brighter than accent
+		Info:      fg("60"),  // dusty navy
+		BannerTop: faint,
+		BannerBot: fg("88"),
 	}
 
 	// ThemeRust shifts the accent toward orange-red — weathered
@@ -168,13 +180,13 @@ var (
 	// muted text.
 	ThemeRust = Theme{
 		Name:      "rust",
-		Mute:      "\033[38;5;243m",
-		Accent:    "\033[38;5;130m", // rust orange-red
-		OK:        "\033[38;5;107m",
-		Err:       "\033[38;5;167m",
-		Info:      "\033[38;5;66m",
-		BannerTop: "\033[38;5;243m",
-		BannerBot: "\033[38;5;130m",
+		Mute:      faint,
+		Accent:    fg("130"), // rust orange-red
+		OK:        fg("107"),
+		Err:       fg("167"),
+		Info:      fg("66"),
+		BannerTop: faint,
+		BannerBot: fg("130"),
 	}
 )
 
@@ -219,15 +231,14 @@ func SetTheme(name string) bool {
 // under a specific palette.
 func ActiveTheme() *Theme { return active }
 
-// ThemeNames returns every registered theme name, sorted. The first
-// element is the default (opencode); subsequent are alphabetical so
-// listings are deterministic.
+// ThemeNames returns every registered theme name. The first element
+// is the default (ash); subsequent are alphabetical so listings are
+// deterministic.
 func ThemeNames() []string {
 	out := make([]string, 0, len(themes))
 	for _, t := range themes {
 		out = append(out, t.Name)
 	}
-	// Default first, rest sorted.
 	first := out[0]
 	rest := append([]string(nil), out[1:]...)
 	sort.Strings(rest)
@@ -247,49 +258,38 @@ func lookupTheme(name string) (*Theme, bool) {
 	return nil, false
 }
 
-const reset = "\033[0m"
-
-// useColor reports whether ANSI escapes should be emitted on the
-// given writer. Honors the de-facto standard NO_COLOR env var (see
-// https://no-color.org/) and only colorizes when the underlying fd
-// is a TTY — piped or redirected output stays plain.
-func useColor(w io.Writer) bool {
-	if os.Getenv("NO_COLOR") != "" {
-		return false
+// rendererFor returns a lipgloss renderer bound to w. lipgloss's
+// global default detects against os.Stdout; for callers writing
+// elsewhere (e.g., os.Stderr, a buffer in tests) we get accurate
+// NO_COLOR / TTY behavior by binding the renderer to the actual
+// destination.
+func rendererFor(w io.Writer) *lipgloss.Renderer {
+	if f, ok := w.(*os.File); ok {
+		return lipgloss.NewRenderer(f)
 	}
-	type fder interface{ Fd() uintptr }
-	f, ok := w.(fder)
-	if !ok {
-		return false
-	}
-	return term.IsTerminal(int(f.Fd()))
+	// Fall back to the default renderer for non-file writers (tests,
+	// buffers). lipgloss returns plain text when output isn't a TTY.
+	return lipgloss.DefaultRenderer()
 }
 
-// wrap returns s sandwiched between code and reset when colorEnabled,
-// otherwise s alone. Centralized so every helper goes through the
-// same on/off switch — adding a NO_COLOR check elsewhere is a smell.
-func wrap(colorEnabled bool, code, s string) string {
-	if !colorEnabled || code == "" {
-		return s
-	}
-	return code + s + reset
+func render(w io.Writer, st lipgloss.Style, s string) string {
+	return st.Renderer(rendererFor(w)).Render(s)
 }
 
 // Mute returns s rendered as secondary text per the active theme.
-func Mute(w io.Writer, s string) string { return wrap(useColor(w), active.Mute, s) }
+func Mute(w io.Writer, s string) string { return render(w, active.Mute, s) }
 
-// Accent returns s rendered as the brand accent color (orange in
-// opencode, blood red in metal, white in noir, …).
-func Accent(w io.Writer, s string) string { return wrap(useColor(w), active.Accent, s) }
+// Accent returns s rendered as the brand accent color.
+func Accent(w io.Writer, s string) string { return render(w, active.Accent, s) }
 
 // OK returns s in the success color.
-func OK(w io.Writer, s string) string { return wrap(useColor(w), active.OK, s) }
+func OK(w io.Writer, s string) string { return render(w, active.OK, s) }
 
 // Err returns s in the error color.
-func Err(w io.Writer, s string) string { return wrap(useColor(w), active.Err, s) }
+func Err(w io.Writer, s string) string { return render(w, active.Err, s) }
 
 // Info returns s in the cool-toned info/hint color.
-func Info(w io.Writer, s string) string { return wrap(useColor(w), active.Info, s) }
+func Info(w io.Writer, s string) string { return render(w, active.Info, s) }
 
 // Field renders a `label: value` line styled MUTED-then-NC, padded
 // so successive labels of varying length still align. Width is the
@@ -306,32 +306,31 @@ func Field(w io.Writer, width int, label, value string) {
 // Banner returns the kvlt block-letter logo, themed via the active
 // theme's BannerTop/BannerBot colors. Line-level coloring (rather
 // than the half-block midline trick) — 2-row letterforms don't give
-// us enough vertical room for a true middle stripe.
-//
-// On non-color outputs the banner falls back to plain block letters.
+// enough vertical room for a true middle stripe.
 func Banner(w io.Writer) string {
-	if !useColor(w) {
-		return "█▄▀ █░█ █░░ ▀█▀\n█░█ ▀▄▀ █▄▄ ░█░\n"
-	}
-	top := active.BannerTop
-	bot := active.BannerBot
-	return top + "█▄▀ █░█ █░░ ▀█▀" + reset + "\n" +
-		bot + "█░█ ▀▄▀ █▄▄ ░█░" + reset + "\n"
+	const top = "█▄▀ █░█ █░░ ▀█▀"
+	const bot = "█░█ ▀▄▀ █▄▄ ░█░"
+	return render(w, active.BannerTop, top) + "\n" +
+		render(w, active.BannerBot, bot) + "\n"
 }
 
 // Success renders a leading "✓" mark in the OK color followed by msg.
-// Falls back to "[ok]" on NO_COLOR / non-TTY for log-friendliness.
+// Falls back to "[ok]" when lipgloss decides not to color (NO_COLOR /
+// non-TTY) — we detect that by rendering an empty span and checking
+// for escape bytes.
 func Success(w io.Writer, msg string) string {
-	if useColor(w) {
-		return OK(w, "✓") + " " + msg
+	mark := OK(w, "✓")
+	if !strings.ContainsRune(mark, 0x1b) {
+		return "[ok] " + msg
 	}
-	return "[ok] " + msg
+	return mark + " " + msg
 }
 
 // Failure mirrors Success for error one-liners.
 func Failure(w io.Writer, msg string) string {
-	if useColor(w) {
-		return Err(w, "✗") + " " + msg
+	mark := Err(w, "✗")
+	if !strings.ContainsRune(mark, 0x1b) {
+		return "[err] " + msg
 	}
-	return "[err] " + msg
+	return mark + " " + msg
 }
