@@ -77,8 +77,7 @@ adapter — never duplicate logic from the package into commands.
 
 ```bash
 go build -o kvlt .              # base binary (local age backend only)
-go build -tags sops -o kvlt .   # base + SOPS backend
-go build -tags aws -o kvlt .    # base + AWS Secrets Manager backend
+go build -tags aws -o kvlt .    # base + AWS Secrets Manager backend (planned)
 go run . version                # quick sanity check
 ```
 
@@ -140,14 +139,19 @@ After completing work, run these checks:
 
 ## Roadmap
 
+Shipped:
+
 - [x] `local` backend (age + SSH-key recipients)
-- [x] `vault create` / `put` / `get` / `list-keys` CLI verbs
+- [x] `vault create` / `secret put` / `secret get` / `secret list` CLI verbs
 - [x] `kvlt env` / `kvlt run` for shell + child-process integration
 - [x] Pluggable backend registry
+
+Up next (only what earns its keep):
+
 - [ ] ssh-agent identity integration (file-based passphrase prompt works today)
 - [ ] `kvlt vault migrate` (copy-then-swap-config)
-- [ ] SOPS backend (`-tags sops`)
-- [ ] AWS Secrets Manager backend (`-tags aws`)
-- [ ] Azure Key Vault backend (`-tags azure`)
-- [ ] 1Password backend via `op` CLI (`-tags onepass`)
-- [ ] HashiCorp Vault / OpenBao backend (`-tags hcv`)
+- [ ] AWS Secrets Manager backend (`-tags aws`) — gated on a real "dev local → prod cloud" use case
+
+Intentionally **not** on the roadmap: SOPS, Azure Key Vault, 1Password, HashiCorp
+Vault / OpenBao. If you live in those tools, use them directly — kvlt's pitch is
+specifically for projects that don't have / don't want them.

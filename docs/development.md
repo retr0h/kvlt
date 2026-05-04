@@ -62,23 +62,21 @@ cmd/                             # cobra command tree (CLI surface)
   ├── env.go                     # `env <vault>` (eval-style export)
   └── run.go                     # `run <vault> -- cmd…` (exec wrapper)
 pkg/kvlt/                        # public, importable library
-  ├── provider.go                # Provider interface, Config struct
+  ├── provider.go                # Provider interface, Config struct, Describer
   ├── errors.go                  # typed sentinels (ErrKeyNotFound, …)
   ├── factory.go                 # ProviderFactory + RegisterBackend registry
   ├── store.go                   # Store + NewStore + Create + Open + List
   ├── identity.go                # SSH identity / passphrase loading helpers
   ├── local.go                   # LocalProvider (age + SSH recipients) — default
-  ├── backend_sops.go            # NewSOPSProvider    (build tag: sops, planned)
-  ├── backend_aws.go             # NewAWSProvider     (build tag: aws, planned)
-  ├── backend_azure.go           # NewAzureProvider   (build tag: azure, planned)
-  └── backend_1password.go       # NewOnePassProvider (build tag: onepass, planned)
+  └── backend_aws.go             # NewAWSProvider (build tag: aws, planned —
+                                 # only if a real dev→prod use case lands)
 internal/version/                # build identity (ldflag targets)
-internal/cli/                    # CLI-only helpers (TTY prompt, colored
+internal/cli/                    # CLI-only helpers (TTY prompt, themed
                                  # output) — never imported by pkg/kvlt
 ```
 
 Cloud backends sit behind build tags so the base binary has zero third-party
-runtime deps beyond cobra/viper/slog. Operators who want aws-sm can
+runtime deps beyond cobra/viper. Operators who want aws-sm can
 `go build -tags aws -o kvlt .` (or use a goreleaser variant build) without
 forcing the AWS SDK on every consumer.
 
@@ -88,14 +86,14 @@ forcing the AWS SDK on every consumer.
 | --------------------------- | --------------------------------------- |
 | `spf13/cobra`               | CLI command tree                        |
 | `spf13/viper`               | Config + env-var binding (KVLT\_\*)     |
-| `lmittmann/tint`            | Colored slog output to TTY              |
 | `caarlos0/go-version`       | `kvlt version` JSON output              |
 | `golang.org/x/term`         | TTY detection + passphrase prompts      |
 | `golang.org/x/crypto/ssh`   | SSH key parsing (recipients/identities) |
 | `filippo.io/age` + `agessh` | Encryption + SSH-key support            |
 
-Cloud backends pull in their respective SDKs; see each `backend_*.go` for the
-exact import.
+The library (`pkg/kvlt`) does no logging — errors flow back through `RunE`
+to a single rendering path in `cmd/root.go`. Cloud backends pull in their
+respective SDKs; see each `backend_*.go` for the exact import.
 
 ## How the Local Backend Works
 

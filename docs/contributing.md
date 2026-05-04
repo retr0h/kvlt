@@ -48,7 +48,7 @@ Types: `feat`, `fix`, `docs`, `chore`, `ci`, `build`, `test`, `refactor`
 Examples:
 
 ```
-feat: add 1Password backend
+feat: add ssh-agent identity resolver
 fix: handle missing key file on first run
 docs: clarify migrate copy-then-swap semantics
 ```

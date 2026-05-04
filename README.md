@@ -162,18 +162,19 @@ by callers, not pushed into the backend.
 
 ## 🗺️ Roadmap
 
+Shipped:
+
 - [x] 🪪 Project scaffold + CLI tree
 - [x] 🔐 `local` backend (age + SSH-key recipients)
-- [x] 🚪 `vault create` / `put` / `get` / `list-keys`
+- [x] 🚪 `vault create` / `secret put` / `secret get` / `secret list`
 - [x] 🐚 `kvlt env` / `kvlt run` for shell + child-process integration
 - [x] 🔌 Pluggable backend registry (factory pattern)
-- [ ] 🤝 ssh-agent integration (file-based passphrase prompt works today)
-- [ ] 🔁 `vault migrate` (copy-then-swap)
-- [ ] 🔌 SOPS backend (`-tags sops`)
-- [ ] 🔌 AWS Secrets Manager backend (`-tags aws`)
-- [ ] 🔌 Azure Key Vault backend (`-tags azure`)
-- [ ] 🔌 1Password backend via `op` CLI (`-tags onepass`)
-- [ ] 🔌 HashiCorp Vault / OpenBao backend (`-tags hcv`)
+
+Up next — only what earns its keep:
+
+- [ ] 🤝 **ssh-agent integration** — friction-free decrypt; Touch ID via [Secretive](https://github.com/maxgoedjen/secretive) on macOS without re-prompting per read.
+- [ ] 🔁 **`vault migrate`** — copy-then-swap, named-vault payoff: change backend type without touching call sites.
+- [ ] 🔌 **AWS Secrets Manager backend** (`-tags aws`) — only if a real "dev local → prod cloud" use case shows up. Other backends (SOPS, Azure, 1Password, HashiCorp Vault) are intentionally **not** on the roadmap; if you live in those tools, use them directly.
 
 ## 📚 Docs
 
