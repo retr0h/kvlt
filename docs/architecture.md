@@ -1,9 +1,7 @@
 # kvlt architecture
 
-`kvlt` is a small, pluggable secrets vault. This document describes the
-architecture in the style of
-[swamp's vault design](https://github.com/systeminit/swamp/blob/main/design/vaults.md)
-— the named-vault model, on-disk layout, provider interface, built-in backends,
+`kvlt` is a small, pluggable secrets vault. This document covers the
+named-vault model, on-disk layout, provider interface, built-in backends,
 and operational primitives (migration, redaction, error handling).
 Implementation details live next to the code; this file is the conceptual map.
 
@@ -87,9 +85,8 @@ type Provider interface {
 ```
 
 The interface is intentionally minimal — anything fancier (rotation, lease,
-audit) is layered on top by callers, not pushed into the backend contract. This
-is the same shape as swamp's `VaultProvider`, on purpose: an operator's mental
-model carries between the two systems.
+audit) is layered on top by callers, not pushed into the backend contract.
+Four methods is the contract; everything else is layered on top.
 
 ## Vault Configuration
 
@@ -132,8 +129,7 @@ settings:
 ### `local` (default; on-disk type identifier `local_encryption`)
 
 The default backend. CLI alias is `local`; the on-disk type identifier in vault
-config files is `local_encryption` (matches swamp's identifier so paths and
-configs are compatible).
+config files is `local_encryption`.
 
 - **Encryption**: [age](https://github.com/FiloSottile/age) (X25519 +
   ChaCha20-Poly1305). kvlt does not own the cipher primitives — every
@@ -217,8 +213,8 @@ references continue to resolve identically.
 - **Dry-run support.** `--dry-run` prints the secret count and type change
   without copying anything.
 
-This is the same migration model swamp uses; we copied the safety properties on
-purpose.
+The copy-then-swap shape gives us the safety property: any partial failure
+leaves the source intact; the user has not lost data.
 
 ## Error Handling
 

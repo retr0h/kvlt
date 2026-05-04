@@ -28,7 +28,7 @@ local age files today, SOPS or AWS Secrets Manager tomorrow.
 ## ✨ Features
 
 - 🔐 **age + SSH keys** — encrypts with `~/.ssh/id_ed25519.pub`, decrypts with the matching private key. Borrows your existing protection chain (passphrase + ssh-agent + Touch ID via [secretive](https://github.com/maxgoedjen/secretive)); kvlt doesn't reinvent the lock.
-- 🪪 **Named vaults** — `kvlt get prod API_KEY`, never `kvlt get_aws(…)`; the backend is an implementation detail. Same model as [swamp](https://github.com/systeminit/swamp)'s vault subsystem.
+- 🪪 **Named vaults** — `kvlt get prod API_KEY`, never `kvlt get_aws(…)`; the backend is an implementation detail. Switching from local age files to AWS Secrets Manager later doesn't touch a single call site.
 - 🔌 **Pluggable backends** — `Provider` interface + factory registry. SOPS, AWS Secrets Manager, Azure Key Vault, 1Password each become one new file behind a `//go:build <tag>` guard so the base binary stays dependency-light.
 - 👥 **Multi-recipient** — encrypt to N SSH public keys, any one of those private keys can decrypt. The team-sharing escape hatch.
 - 🤫 **Stdin / TTY input modes** — `echo $VAL | kvlt put` keeps secrets out of shell history; bare `kvlt put` prompts with echo off.
@@ -92,7 +92,7 @@ actually has a human-in-the-loop step:
 | `~/.aws/credentials` plaintext      | `cat`                           | full AWS access, instantly                 |
 | `.env` with `STRIPE_KEY=…`          | `cat`                           | Stripe access, instantly                   |
 | `gh` / `glab` / `npm` tokens        | `cat`                           | git host access, instantly                 |
-| Swamp-style vault (key file in repo) | `cat key.txt && cat blob`       | decrypt, instantly — key file _is_ the secret |
+| Key-file vault (key.txt next to blobs) | `cat key.txt && cat blob`       | decrypt, instantly — key file _is_ the secret |
 | **kvlt + passphrase-locked SSH key** | reads `.age` + encrypted key file | **needs the passphrase**                  |
 | **kvlt + ssh-agent (timed unlock)** | tries to decrypt                | needs the passphrase to (re-)unlock the agent |
 | **kvlt + Secretive on macOS**       | tries to decrypt                | **needs your fingerprint** (Touch ID)      |
@@ -105,9 +105,11 @@ private key file, useless without the passphrase. The credentials never
 exist as plaintext at rest.
 
 This is why a `.env` -> kvlt swap is a real upgrade, not just a re-shuffle.
-The previous swamp-style approach (encryption key as a sibling text file)
-didn't help: an attacker grabbing the vault would also grab the key. kvlt
-moves the key out of the file system entirely.
+Vault designs that store the encryption key as a sibling text file in
+the repo don't help either — an attacker grabbing the vault grabs the
+key. kvlt moves the key out of the filesystem entirely; what's left on
+disk is useless without something off-disk (your passphrase, the agent's
+unlocked state, your fingerprint).
 
 **Honest about the limits:**
 
@@ -141,7 +143,7 @@ by callers, not pushed into the backend.
 
 ## 💡 Inspiration
 
-- **[swamp](https://github.com/systeminit/swamp)** — the named-vault model, the `vaults/<type>/<id>.yaml` layout, and the copy-then-swap migrate semantics are lifted directly from swamp's vault subsystem
+- **[age](https://github.com/FiloSottile/age)** — pure-Go, audited, SSH-key-friendly encryption. kvlt is a vault wrapper around it; the crypto is age's.
 - **[SOPS](https://github.com/getsops/sops)** — the "encrypted files in a repo, no server required" mindset
 - **[grind](https://github.com/retr0h/grind), [tlock](https://github.com/retr0h/tlock), [meshx](https://github.com/retr0h/meshx)** — sibling retr0h CLIs; same scaffold, same justfile setup, same MIT vibes
 

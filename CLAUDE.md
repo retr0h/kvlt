@@ -15,10 +15,9 @@ doesn't reinvent the lock. Cloud backends (SOPS, AWS Secrets Manager,
 Azure Key Vault, 1Password, HashiCorp Vault) sit behind build tags so
 consumers who don't need them never pay the SDK cost.
 
-The named-vault design is borrowed from [swamp](https://github.com/systeminit/swamp)'s
-vault subsystem: callers reference vaults by user-defined name, never by
-backend type, so a project can start on `local_encryption` in dev and
-migrate to `aws-sm` in prod without touching application code.
+The named-vault design — callers reference vaults by user-defined name,
+never by backend type — means a project can start on `local_encryption`
+in dev and migrate to `aws-sm` in prod without touching application code.
 
 ## Architecture
 
