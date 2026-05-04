@@ -57,15 +57,60 @@ type Provider interface {
 	Name() string
 }
 
+// Describer is an optional capability backends may implement to
+// expose human-readable detail to `kvlt vault info`. Modeled the
+// same way as io.WriterTo / io.ReaderFrom — narrow, single-purpose,
+// callers type-assert.
+//
+// Each DescribeField is one row in the rendered output. Backends
+// decide what to surface (recipient list for local, region + secret
+// prefix for AWS, kv path for HCV) — the CLI never reaches into
+// Config.Settings, so adding a new backend doesn't require teaching
+// `vault info` about its settings shape.
+type Describer interface {
+	Describe() []DescribeField
+}
+
+// DescribeField is one (label, values) row in `vault info` output.
+// Multi-value fields (e.g. a recipient list) carry every entry in
+// Values so the CLI renderer can format them consistently. Single-
+// value fields use a one-element Values slice.
+type DescribeField struct {
+	Label  string
+	Values []string
+}
+
 // Backend type identifiers. Stored as the `type` field in vault
 // configuration files. Constants — not loose strings — so a typo in
 // CLI or library code is a compile error, not a runtime "unknown
 // backend" error.
 const (
-	// TypeLocalEncryption is the default zero-dependency backend
-	// (AES-256-GCM, key file on disk).
+	// TypeLocalEncryption is the wire identifier (matches swamp's
+	// vault subsystem) and is what gets persisted to YAML and used as
+	// a path component under vaults/.
 	TypeLocalEncryption = "local_encryption"
+
+	// TypeLocal is the friendly alias accepted on the way in. Library
+	// callers and the CLI both pass "local"; CanonicalizeType maps it
+	// to TypeLocalEncryption before lookup so external Go programs do
+	// not need to know the wire identifier.
+	TypeLocal = "local"
 )
+
+// CanonicalizeType normalizes user-facing aliases to the wire
+// identifier persisted in vault configs. Unknown values pass through
+// unchanged so the registry's "unknown vault type" error path still
+// fires for genuine typos. The `local-encryption` hyphen typo is
+// translated to TypeLocalEncryption explicitly because it is the most
+// common mistake — coming from the path component spelling.
+func CanonicalizeType(t string) string {
+	switch t {
+	case TypeLocal, "local-encryption":
+		return TypeLocalEncryption
+	default:
+		return t
+	}
+}
 
 // Config is the on-disk vault configuration. Each named vault writes
 // one of these to vaults/{type}/{id}.yaml, mirroring swamp's layout

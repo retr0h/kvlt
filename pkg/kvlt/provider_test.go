@@ -18,13 +18,28 @@
 // FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
 
-// Package main is the kvlt entry point. The CLI tree lives in the
-// `cmd` package; the public, importable vault library lives under
-// `pkg/kvlt` and is the same surface external Go programs consume.
-package main
+package kvlt
 
-import "github.com/retr0h/kvlt/cmd"
+import "testing"
 
-func main() {
-	cmd.Execute()
+func TestCanonicalizeType(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, in, want string
+	}{
+		{"local alias maps to canonical wire identifier", "local", TypeLocalEncryption},
+		{"hyphen typo maps to canonical", "local-encryption", TypeLocalEncryption},
+		{"already canonical passes through", TypeLocalEncryption, TypeLocalEncryption},
+		{"unknown passes through unchanged", "unknown", "unknown"},
+		{"empty string passes through unchanged", "", ""},
+		{"matching is case-sensitive", "AWS-SM", "AWS-SM"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := CanonicalizeType(tc.in); got != tc.want {
+				t.Fatalf("CanonicalizeType(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
 }

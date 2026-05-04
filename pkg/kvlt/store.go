@@ -21,6 +21,7 @@
 package kvlt
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -28,7 +29,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"filippo.io/age"
@@ -98,6 +99,7 @@ func (s *Store) Create(name, vaultType string, recipientStrings []string) (*Conf
 	if err := validateVaultName(name); err != nil {
 		return nil, err
 	}
+	vaultType = CanonicalizeType(vaultType)
 	if !IsBackendRegistered(vaultType) {
 		return nil, fmt.Errorf(
 			"%w: unknown vault type %q — registered types: %v",
@@ -112,14 +114,20 @@ func (s *Store) Create(name, vaultType string, recipientStrings []string) (*Conf
 	// encrypted to it.
 	for _, rs := range recipientStrings {
 		if _, err := parseRecipientString(rs); err != nil {
-			return nil, fmt.Errorf("%w: recipient %q: %w", ErrInvalidConfig, rs, err)
+			return nil, fmt.Errorf("recipient %q: %w", rs, err)
 		}
 	}
 
 	// Check for existing vault by name across every type — names are
 	// unique repo-wide, since callers reference them without a type
-	// prefix.
-	if existing, _ := s.findConfigByName(name); existing != nil {
+	// prefix. An I/O error scanning the vaults dir is propagated, not
+	// swallowed: a unreadable directory must not silently bypass the
+	// uniqueness guard.
+	existing, err := s.findConfigByName(name)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
 		return nil, fmt.Errorf("%w: %q (type %s)", ErrVaultAlreadyExists, name, existing.Type)
 	}
 
@@ -128,9 +136,9 @@ func (s *Store) Create(name, vaultType string, recipientStrings []string) (*Conf
 		return nil, err
 	}
 	cfg := &Config{
-		ID:       id,
-		Name:     name,
-		Type:     vaultType,
+		ID:   id,
+		Name: name,
+		Type: vaultType,
 		Settings: map[string]any{
 			"recipients": stringsToAny(recipientStrings),
 		},
@@ -186,7 +194,7 @@ func (s *Store) List() ([]*Config, error) {
 		return nil, fmt.Errorf("list vault types in %q: %w", vaultsRoot, err)
 	}
 
-	out := []*Config{}
+	out := make([]*Config, 0, len(typeDirs))
 	for _, td := range typeDirs {
 		if !td.IsDir() {
 			continue
@@ -207,7 +215,7 @@ func (s *Store) List() ([]*Config, error) {
 			out = append(out, cfg)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	slices.SortFunc(out, func(a, b *Config) int { return cmp.Compare(a.Name, b.Name) })
 	return out, nil
 }
 
@@ -259,7 +267,11 @@ func (s *Store) readConfig(path string) (*Config, error) {
 	}
 	cfg := &Config{}
 	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("%w: parse vault config %q: %w", ErrInvalidConfig, path, err)
+		// Wrap only ErrInvalidConfig — the yaml error goes into the
+		// message, not the chain, since callers branch on
+		// kvlt-typed sentinels and the yaml error type is an
+		// implementation detail of the encoding library.
+		return nil, fmt.Errorf("%w: parse vault config %q: %v", ErrInvalidConfig, path, err)
 	}
 	switch {
 	case cfg.ID == "":
@@ -312,5 +324,5 @@ func parseRecipientString(s string) (age.Recipient, error) {
 	if r, err := age.ParseX25519Recipient(s); err == nil {
 		return r, nil
 	}
-	return nil, fmt.Errorf("not a valid SSH or age recipient")
+	return nil, fmt.Errorf("%w: not a valid SSH or age recipient", ErrInvalidConfig)
 }

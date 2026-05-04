@@ -104,115 +104,279 @@ func roundTripWithIdentity(t *testing.T, recipients []age.Recipient, identities 
 	}
 }
 
-func TestParseSSHRecipients_ValidLine(t *testing.T) {
+func TestParseSSHRecipients(t *testing.T) {
 	t.Parallel()
-	_, pub := generateSSHKeyPair(t, nil)
-
-	rec, err := ParseSSHRecipients(pub)
-	if err != nil {
-		t.Fatalf("ParseSSHRecipients: %v", err)
-	}
-	if len(rec) != 1 {
-		t.Fatalf("got %d recipients, want 1", len(rec))
-	}
-}
-
-func TestParseSSHRecipients_SkipsBlankAndComments(t *testing.T) {
-	t.Parallel()
-	_, pub := generateSSHKeyPair(t, nil)
-
-	input := bytes.Join([][]byte{
+	_, validPub := generateSSHKeyPair(t, nil)
+	withDecorations := bytes.Join([][]byte{
 		[]byte("# leading comment"),
 		[]byte(""),
-		bytes.TrimRight(pub, "\n"),
+		bytes.TrimRight(validPub, "\n"),
 		[]byte("   "),
 		[]byte("# trailing"),
 	}, []byte("\n"))
 
-	rec, err := ParseSSHRecipients(input)
-	if err != nil {
-		t.Fatalf("ParseSSHRecipients: %v", err)
+	cases := []struct {
+		name      string
+		input     []byte
+		wantCount int
+		wantErr   error
+	}{
+		{
+			name:      "single valid line parses to one recipient",
+			input:     validPub,
+			wantCount: 1,
+			wantErr:   nil,
+		},
+		{
+			name:      "blank lines and # comments are skipped",
+			input:     withDecorations,
+			wantCount: 1,
+			wantErr:   nil,
+		},
+		{
+			name:    "all-comment input returns ErrInvalidConfig",
+			input:   []byte("# only a comment\n\n"),
+			wantErr: ErrInvalidConfig,
+		},
+		{
+			name:    "malformed line returns ErrInvalidConfig",
+			input:   []byte("not-an-ssh-key\n"),
+			wantErr: ErrInvalidConfig,
+		},
 	}
-	if len(rec) != 1 {
-		t.Fatalf("got %d recipients, want 1 (blank/comment lines should be filtered)", len(rec))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			rec, err := ParseSSHRecipients(tc.input)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("err: got %v, want errors.Is(err, %v)", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("ParseSSHRecipients: %v", err)
+			}
+			if len(rec) != tc.wantCount {
+				t.Fatalf("recipients: got %d, want %d", len(rec), tc.wantCount)
+			}
+		})
 	}
 }
 
-func TestParseSSHRecipients_RejectsEmptyInput(t *testing.T) {
-	t.Parallel()
-	_, err := ParseSSHRecipients([]byte("# only a comment\n\n"))
-	if !errors.Is(err, ErrInvalidConfig) {
-		t.Fatalf("ParseSSHRecipients with no recipients: got %v, want ErrInvalidConfig", err)
-	}
-}
-
-func TestParseSSHRecipients_RejectsMalformed(t *testing.T) {
-	t.Parallel()
-	_, err := ParseSSHRecipients([]byte("not-an-ssh-key\n"))
-	if !errors.Is(err, ErrInvalidConfig) {
-		t.Fatalf("ParseSSHRecipients with malformed line: got %v, want ErrInvalidConfig", err)
-	}
-}
-
-func TestLoadSSHIdentity_UnencryptedKeyRoundTrip(t *testing.T) {
-	t.Parallel()
-	priv, pub := generateSSHKeyPair(t, nil)
-	keyPath := writeKeyToTempFile(t, priv)
-
-	id, err := LoadSSHIdentity(keyPath, nil)
-	if err != nil {
-		t.Fatalf("LoadSSHIdentity: %v", err)
-	}
-	rec, err := ParseSSHRecipients(pub)
-	if err != nil {
-		t.Fatalf("ParseSSHRecipients: %v", err)
-	}
-	roundTripWithIdentity(t, rec, []age.Identity{id})
-}
-
-func TestLoadSSHIdentity_EncryptedKeyPromptsForPassphrase(t *testing.T) {
+func TestLoadSSHIdentity(t *testing.T) {
 	t.Parallel()
 	const passphrase = "correct horse battery staple"
-	priv, pub := generateSSHKeyPair(t, []byte(passphrase))
-	keyPath := writeKeyToTempFile(t, priv)
+	plainPriv, plainPub := generateSSHKeyPair(t, nil)
+	encPriv, encPub := generateSSHKeyPair(t, []byte(passphrase))
 
-	prompt := func(_ string) ([]byte, error) {
-		return []byte(passphrase), nil
+	cases := []struct {
+		name    string
+		setup   func(t *testing.T) (keyPath string, prompt PassphrasePrompt, pub []byte)
+		wantErr error
+	}{
+		{
+			name: "unencrypted key loads and round-trips",
+			setup: func(t *testing.T) (string, PassphrasePrompt, []byte) {
+				t.Helper()
+				return writeKeyToTempFile(t, plainPriv), nil, plainPub
+			},
+		},
+		{
+			name: "encrypted key with correct prompt loads and round-trips",
+			setup: func(t *testing.T) (string, PassphrasePrompt, []byte) {
+				t.Helper()
+				prompt := func(_ string) ([]byte, error) { return []byte(passphrase), nil }
+				return writeKeyToTempFile(t, encPriv), prompt, encPub
+			},
+		},
+		{
+			name: "encrypted key with nil prompt returns ErrAuthFailed",
+			setup: func(t *testing.T) (string, PassphrasePrompt, []byte) {
+				t.Helper()
+				return writeKeyToTempFile(t, encPriv), nil, nil
+			},
+			wantErr: ErrAuthFailed,
+		},
 	}
-
-	id, err := LoadSSHIdentity(keyPath, prompt)
-	if err != nil {
-		t.Fatalf("LoadSSHIdentity with passphrase: %v", err)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			path, prompt, pub := tc.setup(t)
+			id, err := LoadSSHIdentity(path, prompt)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("err: got %v, want errors.Is(err, %v)", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("LoadSSHIdentity: %v", err)
+			}
+			rec, err := ParseSSHRecipients(pub)
+			if err != nil {
+				t.Fatalf("ParseSSHRecipients: %v", err)
+			}
+			roundTripWithIdentity(t, rec, []age.Identity{id})
+		})
 	}
-	rec, err := ParseSSHRecipients(pub)
-	if err != nil {
-		t.Fatalf("ParseSSHRecipients: %v", err)
-	}
-	roundTripWithIdentity(t, rec, []age.Identity{id})
 }
 
-func TestLoadSSHIdentity_EncryptedKeyWithoutPromptIsRejected(t *testing.T) {
-	t.Parallel()
-	priv, _ := generateSSHKeyPair(t, []byte("hunter2"))
-	keyPath := writeKeyToTempFile(t, priv)
-
-	_, err := LoadSSHIdentity(keyPath, nil)
-	if !errors.Is(err, ErrAuthFailed) {
-		t.Fatalf("LoadSSHIdentity on encrypted key with nil prompt: got %v, want ErrAuthFailed", err)
-	}
-}
-
-func TestLoadSSHIdentities_SkipsMissingFiles(t *testing.T) {
+func TestLoadSSHIdentities(t *testing.T) {
 	t.Parallel()
 	priv, _ := generateSSHKeyPair(t, nil)
-	real := writeKeyToTempFile(t, priv)
-	missing := filepath.Join(filepath.Dir(real), "absent_key")
 
-	ids, err := LoadSSHIdentities([]string{missing, real}, nil)
-	if err != nil {
-		t.Fatalf("LoadSSHIdentities: %v", err)
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) []string
+		wantCount int
+		wantErr   bool
+	}{
+		{
+			name: "missing files are skipped, present file loads",
+			setup: func(t *testing.T) []string {
+				t.Helper()
+				present := writeKeyToTempFile(t, priv)
+				missing := filepath.Join(filepath.Dir(present), "absent_key")
+				return []string{missing, present}
+			},
+			wantCount: 1,
+		},
+		{
+			name:      "all-missing input returns empty slice without error",
+			setup:     func(_ *testing.T) []string { return []string{"/nonexistent/a", "/nonexistent/b"} },
+			wantCount: 0,
+		},
 	}
-	if len(ids) != 1 {
-		t.Fatalf("got %d identities, want 1 (missing file should be skipped)", len(ids))
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			ids, err := LoadSSHIdentities(tc.setup(t), nil)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err: got %v, wantErr=%v", err, tc.wantErr)
+			}
+			if len(ids) != tc.wantCount {
+				t.Fatalf("count: got %d, want %d", len(ids), tc.wantCount)
+			}
+		})
+	}
+}
+
+func TestDefaultSSHKeyPaths(t *testing.T) {
+	// Cannot t.Parallel: cases mutate process-wide HOME.
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T)
+		wantNames []string // basenames of expected paths, in order
+	}{
+		{
+			name:      "no ~/.ssh dir returns empty",
+			setup:     func(t *testing.T) { t.Helper(); t.Setenv("HOME", t.TempDir()) },
+			wantNames: nil,
+		},
+		{
+			name: "only id_ed25519 present returns just that path",
+			setup: func(t *testing.T) {
+				t.Helper()
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				sshDir := filepath.Join(home, ".ssh")
+				if err := os.MkdirAll(sshDir, 0o700); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(sshDir, "id_ed25519"), []byte("x"), 0o600); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+			},
+			wantNames: []string{"id_ed25519"},
+		},
+		{
+			name: "all three key types present preserved in priority order",
+			setup: func(t *testing.T) {
+				t.Helper()
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				sshDir := filepath.Join(home, ".ssh")
+				if err := os.MkdirAll(sshDir, 0o700); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				for _, n := range []string{"id_ed25519", "id_ecdsa", "id_rsa"} {
+					if err := os.WriteFile(filepath.Join(sshDir, n), []byte("x"), 0o600); err != nil {
+						t.Fatalf("write %s: %v", n, err)
+					}
+				}
+			},
+			wantNames: []string{"id_ed25519", "id_ecdsa", "id_rsa"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.setup(t)
+			got := DefaultSSHKeyPaths()
+			if len(got) != len(tc.wantNames) {
+				t.Fatalf("count: got %v, want names %v", got, tc.wantNames)
+			}
+			for i, name := range tc.wantNames {
+				if filepath.Base(got[i]) != name {
+					t.Fatalf("got[%d] basename = %q, want %q", i, filepath.Base(got[i]), name)
+				}
+			}
+		})
+	}
+}
+
+func TestDefaultIdentityResolver(t *testing.T) {
+	// Cannot t.Parallel: subtests mutate HOME.
+	priv, pub := generateSSHKeyPair(t, nil)
+	cases := []struct {
+		name    string
+		setup   func(t *testing.T) (pub []byte)
+		wantErr error
+	}{
+		{
+			name: "loads ed25519 key from ~/.ssh and round-trips",
+			setup: func(t *testing.T) []byte {
+				t.Helper()
+				home := t.TempDir()
+				t.Setenv("HOME", home)
+				sshDir := filepath.Join(home, ".ssh")
+				if err := os.MkdirAll(sshDir, 0o700); err != nil {
+					t.Fatalf("mkdir: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(sshDir, "id_ed25519"), priv, 0o600); err != nil {
+					t.Fatalf("write: %v", err)
+				}
+				return pub
+			},
+		},
+		{
+			name: "no keys in ~/.ssh returns ErrAuthFailed",
+			setup: func(t *testing.T) []byte {
+				t.Helper()
+				t.Setenv("HOME", t.TempDir())
+				return nil
+			},
+			wantErr: ErrAuthFailed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pubKey := tc.setup(t)
+			ids, err := DefaultIdentityResolver(nil)()
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("err: got %v, want errors.Is(err, %v)", err, tc.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolver: %v", err)
+			}
+			rec, err := ParseSSHRecipients(pubKey)
+			if err != nil {
+				t.Fatalf("ParseSSHRecipients: %v", err)
+			}
+			roundTripWithIdentity(t, rec, ids)
+		})
 	}
 }

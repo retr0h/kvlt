@@ -22,7 +22,7 @@ package kvlt
 
 import (
 	"fmt"
-	"sort"
+	"slices"
 	"sync"
 )
 
@@ -66,7 +66,7 @@ func RegisteredBackends() []string {
 	for k := range registry {
 		out = append(out, k)
 	}
-	sort.Strings(out)
+	slices.Sort(out)
 	return out
 }
 
@@ -85,14 +85,20 @@ func IsBackendRegistered(typeID string) bool {
 // cfg.Type. Returns ErrInvalidConfig if no backend matches —
 // usually a build-tag mismatch (a vault config saved on a build
 // with `-tags aws` opened on a base binary without that tag).
-func newProviderFromConfig(repoPath string, cfg *Config, identities IdentityResolver) (Provider, error) {
+func newProviderFromConfig(
+	repoPath string,
+	cfg *Config,
+	identities IdentityResolver,
+) (Provider, error) {
 	registryMu.RLock()
 	factory, ok := registry[cfg.Type]
 	registryMu.RUnlock()
 	if !ok {
 		return nil, fmt.Errorf(
 			"%w: unknown vault type %q in config — registered types: %v (rebuild with appropriate -tags?)",
-			ErrInvalidConfig, cfg.Type, RegisteredBackends(),
+			ErrInvalidConfig,
+			cfg.Type,
+			RegisteredBackends(),
 		)
 	}
 	return factory(repoPath, cfg, identities)

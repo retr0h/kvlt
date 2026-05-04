@@ -98,7 +98,11 @@ func LoadSSHIdentity(keyPath string, prompt PassphrasePrompt) (age.Identity, err
 		return nil, fmt.Errorf("parse SSH key %q: %w", keyPath, err)
 	}
 	if prompt == nil {
-		return nil, fmt.Errorf("%w: SSH key %q is passphrase-protected and no prompt was provided", ErrAuthFailed, keyPath)
+		return nil, fmt.Errorf(
+			"%w: SSH key %q is passphrase-protected and no prompt was provided",
+			ErrAuthFailed,
+			keyPath,
+		)
 	}
 
 	// PassphraseMissingError carries the SSH public key, which agessh
@@ -106,7 +110,10 @@ func LoadSSHIdentity(keyPath string, prompt PassphrasePrompt) (age.Identity, err
 	// PEM bytes plus a callback that turns our PassphrasePrompt into
 	// the byte-slice signature agessh expects.
 	if passErr.PublicKey == nil {
-		return nil, fmt.Errorf("parse SSH key %q: passphrase-protected but public key not recoverable", keyPath)
+		return nil, fmt.Errorf(
+			"parse SSH key %q: passphrase-protected but public key not recoverable",
+			keyPath,
+		)
 	}
 	encID, err := agessh.NewEncryptedSSHIdentity(
 		passErr.PublicKey,
@@ -143,7 +150,7 @@ func LoadSSHIdentities(keyPaths []string, prompt PassphrasePrompt) ([]age.Identi
 	return out, nil
 }
 
-// ParseSSHRecipient parses one or more SSH public keys (in the
+// ParseSSHRecipients parses one or more SSH public keys (in the
 // standard `ssh-ed25519 AAAA… [comment]` line format, separated by
 // newlines) into age recipients. Lines that are blank or start with
 // `#` are treated as comments. This is the format `~/.ssh/*.pub`
@@ -151,14 +158,21 @@ func LoadSSHIdentities(keyPaths []string, prompt PassphrasePrompt) ([]age.Identi
 // pass the contents straight in.
 func ParseSSHRecipients(authorizedKeys []byte) ([]age.Recipient, error) {
 	out := []age.Recipient{}
-	for ln, raw := range strings.Split(string(authorizedKeys), "\n") {
+	lineNum := 0
+	for raw := range strings.SplitSeq(string(authorizedKeys), "\n") {
+		lineNum++
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
 		r, err := agessh.ParseRecipient(line)
 		if err != nil {
-			return nil, fmt.Errorf("%w: parse SSH recipient on line %d: %w", ErrInvalidConfig, ln+1, err)
+			return nil, fmt.Errorf(
+				"%w: parse SSH recipient on line %d: %w",
+				ErrInvalidConfig,
+				lineNum,
+				err,
+			)
 		}
 		out = append(out, r)
 	}
@@ -192,7 +206,10 @@ func DefaultIdentityResolver(prompt PassphrasePrompt) IdentityResolver {
 			return nil, err
 		}
 		if len(ids) == 0 {
-			return nil, fmt.Errorf("%w: no SSH identities found in ~/.ssh — generate one with `ssh-keygen -t ed25519`", ErrAuthFailed)
+			return nil, fmt.Errorf(
+				"%w: no SSH identities found in ~/.ssh — generate one with `ssh-keygen -t ed25519`",
+				ErrAuthFailed,
+			)
 		}
 		return ids, nil
 	}

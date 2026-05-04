@@ -29,7 +29,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"filippo.io/age"
@@ -53,25 +53,44 @@ func init() {
 // derived from the repo root + config — keeping path computation in
 // one place so a future migrate command can compute paths the same
 // way.
-func newLocalProviderFromConfig(repoPath string, cfg *Config, identities IdentityResolver) (Provider, error) {
+func newLocalProviderFromConfig(
+	repoPath string,
+	cfg *Config,
+	identities IdentityResolver,
+) (Provider, error) {
 	recList, _ := cfg.Settings["recipients"].([]any)
 	if len(recList) == 0 {
-		return nil, fmt.Errorf("%w: vault %q has no recipients in config", ErrInvalidConfig, cfg.Name)
+		return nil, fmt.Errorf(
+			"%w: vault %q has no recipients in config",
+			ErrInvalidConfig,
+			cfg.Name,
+		)
 	}
 	recipients := make([]age.Recipient, 0, len(recList))
+	recipientStrings := make([]string, 0, len(recList))
 	for _, raw := range recList {
 		s, ok := raw.(string)
 		if !ok {
-			return nil, fmt.Errorf("%w: vault %q has a non-string recipient entry", ErrInvalidConfig, cfg.Name)
+			return nil, fmt.Errorf(
+				"%w: vault %q has a non-string recipient entry",
+				ErrInvalidConfig,
+				cfg.Name,
+			)
 		}
 		r, err := parseRecipientString(s)
 		if err != nil {
-			return nil, fmt.Errorf("%w: vault %q recipient %q: %w", ErrInvalidConfig, cfg.Name, s, err)
+			return nil, fmt.Errorf("vault %q recipient %q: %w", cfg.Name, s, err)
 		}
 		recipients = append(recipients, r)
+		recipientStrings = append(recipientStrings, s)
 	}
 	dir := filepath.Join(repoPath, ".kvlt", "secrets", cfg.Type, cfg.Name)
-	return NewLocalProvider(cfg.Name, dir, recipients, identities)
+	p, err := NewLocalProvider(cfg.Name, dir, recipients, identities)
+	if err != nil {
+		return nil, err
+	}
+	p.recipientStrings = recipientStrings
+	return p, nil
 }
 
 const (
@@ -124,6 +143,13 @@ type LocalProvider struct {
 	// identities decrypt it (the multi-recipient case for teams).
 	recipients []age.Recipient
 
+	// recipientStrings is the original authorized_keys-style or age
+	// recipient strings as stored in the vault config. Kept so
+	// Describe() can render them verbatim — agessh.Recipient has no
+	// public Stringer, and re-deriving the canonical form from the
+	// parsed key would lose the original comment.
+	recipientStrings []string
+
 	// identities resolves on demand to the set of identities used for
 	// Get. Lazy so List/Name don't trigger passphrase prompts.
 	identities IdentityResolver
@@ -138,14 +164,22 @@ type LocalProvider struct {
 // at least one recipient — a vault you can't decrypt anything with
 // is allowed (write-only patterns), but a vault encrypted to nobody
 // is rejected as a configuration error.
-func NewLocalProvider(name, dir string, recipients []age.Recipient, identityResolver IdentityResolver) (*LocalProvider, error) {
+func NewLocalProvider(
+	name, dir string,
+	recipients []age.Recipient,
+	identityResolver IdentityResolver,
+) (*LocalProvider, error) {
 	switch {
 	case name == "":
 		return nil, fmt.Errorf("%w: vault name is empty", ErrInvalidConfig)
 	case dir == "":
 		return nil, fmt.Errorf("%w: vault directory is empty", ErrInvalidConfig)
 	case len(recipients) == 0:
-		return nil, fmt.Errorf("%w: vault %q has no recipients — nothing could decrypt new secrets", ErrInvalidConfig, name)
+		return nil, fmt.Errorf(
+			"%w: vault %q has no recipients — nothing could decrypt new secrets",
+			ErrInvalidConfig,
+			name,
+		)
 	}
 	if err := os.MkdirAll(dir, localDirMode); err != nil {
 		return nil, fmt.Errorf("create vault dir %q: %w", dir, err)
@@ -161,10 +195,19 @@ func NewLocalProvider(name, dir string, recipients []age.Recipient, identityReso
 // Name returns the user-defined vault name.
 func (p *LocalProvider) Name() string { return p.name }
 
-// Recipients returns the configured age recipients (read-only). Used
-// by `kvlt vault info` to print fingerprints; the slice is not safe
-// to mutate.
+// Recipients returns the configured age recipients (read-only). The
+// returned slice is not safe to mutate.
 func (p *LocalProvider) Recipients() []age.Recipient { return p.recipients }
+
+// Describe implements Describer for `kvlt vault info`. Returns the
+// recipient strings as stored in the vault config — verbatim, so an
+// operator copy-pasting one into `ssh-keygen -lf -` gets the exact
+// fingerprint they'd see in the YAML.
+func (p *LocalProvider) Describe() []DescribeField {
+	return []DescribeField{
+		{Label: "recipients", Values: p.recipientStrings},
+	}
+}
 
 // Get reads {dir}/{key}.age, asks the IdentityResolver for available
 // identities, and decrypts. ErrKeyNotFound is returned when the file
@@ -175,7 +218,11 @@ func (p *LocalProvider) Get(_ context.Context, key string) (string, error) {
 		return "", err
 	}
 	if p.identities == nil {
-		return "", fmt.Errorf("%w: vault %q has no identity resolver configured", ErrAuthFailed, p.name)
+		return "", fmt.Errorf(
+			"%w: vault %q has no identity resolver configured",
+			ErrAuthFailed,
+			p.name,
+		)
 	}
 
 	blob, err := os.ReadFile(p.secretPath(key))
@@ -191,7 +238,11 @@ func (p *LocalProvider) Get(_ context.Context, key string) (string, error) {
 		return "", fmt.Errorf("%w: vault %q: %w", ErrAuthFailed, p.name, err)
 	}
 	if len(identities) == 0 {
-		return "", fmt.Errorf("%w: vault %q: no identities available for decrypt", ErrAuthFailed, p.name)
+		return "", fmt.Errorf(
+			"%w: vault %q: no identities available for decrypt",
+			ErrAuthFailed,
+			p.name,
+		)
 	}
 
 	r, err := age.Decrypt(bytes.NewReader(blob), identities...)
@@ -262,7 +313,7 @@ func (p *LocalProvider) List(_ context.Context) ([]string, error) {
 		}
 		keys = append(keys, strings.TrimSuffix(nm, localSecretSuffix))
 	}
-	sort.Strings(keys)
+	slices.Sort(keys)
 	return keys, nil
 }
 
