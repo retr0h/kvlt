@@ -32,56 +32,16 @@ import (
 	"github.com/retr0h/kvlt/internal/cli"
 )
 
+// rootCmd prints the themed banner before falling through to cobra's
+// auto-generated help. The banner is the welcoming first impression
+// that matches the install script's aesthetic; everything below it —
+// description, command list, flags — is whatever cobra walks from
+// the tree. Hand-curating that drifted as soon as a new verb landed.
 var rootCmd = &cobra.Command{
 	Use:   "kvlt",
-	Short: "Pluggable secrets vault — age + SSH keys by default, cloud backends optional",
-	Long: `kvlt is a small, dependency-light secrets vault. The default backend
-encrypts with age using your existing SSH keys; pluggable backends
-(SOPS, AWS Secrets Manager, Azure Key Vault, 1Password, HashiCorp
-Vault) can be opted in via build tags without touching caller code —
-vaults are referenced by name, not by backend type.`,
-	RunE: func(c *cobra.Command, _ []string) error {
-		// Bare `kvlt` prints the styled banner + a terse subcommand
-		// list. We deliberately avoid c.Help()'s wall-of-text default —
-		// the goal is a welcoming first impression that matches the
-		// install script's aesthetic.
-		out := c.OutOrStdout()
-		_, _ = fmt.Fprintln(out)
-		_, _ = fmt.Fprint(out, cli.Banner(out))
-		_, _ = fmt.Fprintln(out)
-		_, _ = fmt.Fprintln(out, cli.Mute(out, "Pluggable secrets vault. Local-first. No daemon."))
-		_, _ = fmt.Fprintln(out)
-		_, _ = fmt.Fprintln(out, cli.Mute(out, "Commands:"))
-		for _, line := range []struct{ name, desc string }{
-			{"vault create", "create a new vault"},
-			{"vault list", "list configured vaults"},
-			{"vault info", "show one vault's id, type, recipients"},
-			{"secret put", "encrypt and store a secret"},
-			{"secret get", "decrypt and print a secret"},
-			{"secret list", "list secret keys (never values)"},
-			{"env", "emit `export KEY=VALUE` for `eval`"},
-			{"run", "exec a child with vault secrets in env"},
-			{"themes", "preview the CLI color themes"},
-			{"version", "print build identity"},
-		} {
-			_, _ = fmt.Fprintf(out, "  %-14s  %s\n",
-				cli.Accent(out, line.name), cli.Mute(out, line.desc))
-		}
-		_, _ = fmt.Fprintln(out)
-		_, _ = fmt.Fprintf(
-			out,
-			"%s %s\n",
-			cli.Mute(out, "Run"),
-			cli.Accent(
-				out,
-				"kvlt <command> --help",
-			)+cli.Mute(
-				out,
-				" for command-specific options.",
-			),
-		)
-		_, _ = fmt.Fprintln(out)
-		return nil
+	Short: "Pluggable secrets vault. Local-first. No daemon.",
+	Run: func(c *cobra.Command, _ []string) {
+		_ = c.Help()
 	},
 }
 
@@ -108,6 +68,21 @@ func Execute() {
 
 func init() {
 	cobra.OnInitialize(initConfig)
+
+	// Wrap cobra's default help to print the themed banner above it.
+	// SetHelpFunc fires for `kvlt --help` and for the bare-command
+	// fallback alike, so the banner shows in both paths without
+	// duplicating itself.
+	defaultHelp := rootCmd.HelpFunc()
+	rootCmd.SetHelpFunc(func(c *cobra.Command, args []string) {
+		if c == rootCmd {
+			out := c.OutOrStdout()
+			_, _ = fmt.Fprintln(out)
+			_, _ = fmt.Fprint(out, cli.Banner(out))
+			_, _ = fmt.Fprintln(out)
+		}
+		defaultHelp(c, args)
+	})
 }
 
 // initConfig wires viper — env-var overrides take effect through a
@@ -115,9 +90,10 @@ func init() {
 // KVLT_REPO_PATH=/var/lib/kvlt overrides the repo.path default.
 //
 // repo.path is the repository root — the directory that contains the
-// `vaults/` and `.kvlt/secrets/` trees. Defaults to the current
-// working directory so `kvlt vault create --name dev` from inside a
-// project lays state alongside the project itself.
+// `.kvlt/` tree (vault configs under .kvlt/vaults/, encrypted
+// payloads under .kvlt/secrets/). Defaults to the current working
+// directory so `kvlt vault create --name dev` from inside a project
+// lays state alongside the project itself.
 func initConfig() {
 	viper.SetEnvPrefix("kvlt")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))

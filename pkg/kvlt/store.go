@@ -41,16 +41,21 @@ import (
 // human-friendly vault names ("dev", "prod") to backend providers.
 // Every kvlt operation that's not "encrypt this raw file" goes
 // through a Store: the CLI verbs, external Go callers, the migrate
-// command. The path layout matches swamp's so muscle memory carries:
+// command. Everything kvlt-related lives under a single `.kvlt/`
+// tree, so `rm -rf .kvlt` truly resets state:
 //
 //	{repoPath}/
-//	  vaults/
-//	    {type}/
-//	      {id}.yaml         # vault config — name, type, recipients
 //	  .kvlt/
+//	    vaults/
+//	      {type}/
+//	        {id}.yaml       # vault config — name, type, recipients
 //	    secrets/
 //	      {type}/
 //	        {name}/         # backend-managed; for `local`, the .age blobs
+//
+// Vault configs (under .kvlt/vaults/) are safe to commit to git —
+// they hold recipient pubkeys, not private material. Encrypted
+// payloads (.kvlt/secrets/) are gitignored by default.
 //
 // A Store does not load identities; that's the caller's call so a
 // non-interactive CI run can supply a static identity list while an
@@ -182,10 +187,47 @@ func (s *Store) Open(name string) (Provider, error) {
 	return newProviderFromConfig(s.repoPath, cfg, s.identities)
 }
 
+// vaultsRoot is the absolute path to the directory holding vault
+// configs. Centralized so the on-disk layout has one source of truth.
+func (s *Store) vaultsRoot() string {
+	return filepath.Join(s.repoPath, ".kvlt", "vaults")
+}
+
+// Delete removes a vault by name: the config YAML under .kvlt/vaults/
+// AND every encrypted payload under .kvlt/secrets/<type>/<name>/.
+// Returns ErrVaultNotFound if no vault with that name exists.
+//
+// The order matters: payloads are removed first, then the config. A
+// crash between the two leaves orphaned encrypted blobs (recoverable
+// — operator can copy them to a new vault by re-creating with the
+// same recipients), but never an "exists in config, payloads gone"
+// state where Get would return a confusing fs error instead of
+// ErrKeyNotFound.
+func (s *Store) Delete(name string) error {
+	cfg, err := s.findConfigByName(name)
+	if err != nil {
+		return err
+	}
+	if cfg == nil {
+		return fmt.Errorf("%w: %q", ErrVaultNotFound, name)
+	}
+
+	secretsDir := filepath.Join(s.repoPath, ".kvlt", "secrets", cfg.Type, cfg.Name)
+	if err := os.RemoveAll(secretsDir); err != nil {
+		return fmt.Errorf("delete vault %q payloads: %w", name, err)
+	}
+
+	configPath := filepath.Join(s.vaultsRoot(), cfg.Type, cfg.ID+".yaml")
+	if err := os.Remove(configPath); err != nil {
+		return fmt.Errorf("delete vault %q config: %w", name, err)
+	}
+	return nil
+}
+
 // List returns every vault config in the repository, sorted by name.
 // Used by `kvlt vault list` and by the migrate command's preflight.
 func (s *Store) List() ([]*Config, error) {
-	vaultsRoot := filepath.Join(s.repoPath, "vaults")
+	vaultsRoot := s.vaultsRoot()
 	typeDirs, err := os.ReadDir(vaultsRoot)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -236,14 +278,14 @@ func (s *Store) findConfigByName(name string) (*Config, error) {
 	return nil, nil
 }
 
-// writeConfig serializes cfg to {repoPath}/vaults/{type}/{id}.yaml
+// writeConfig serializes cfg to {repoPath}/.kvlt/vaults/{type}/{id}.yaml
 // using the same atomic-write helper LocalProvider uses, so a half-
 // written config can never confuse a future Open. Parent
 // directories are created with mode 0700 since the config holds
 // recipient pubkeys (not secret, but worth keeping owner-only by
 // default for repos that aren't checked into git).
 func (s *Store) writeConfig(cfg *Config) error {
-	dir := filepath.Join(s.repoPath, "vaults", cfg.Type)
+	dir := filepath.Join(s.vaultsRoot(), cfg.Type)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("create vaults dir %q: %w", dir, err)
 	}

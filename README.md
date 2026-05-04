@@ -60,16 +60,20 @@ Cloud backends opt in via build tags: `go build -tags aws -o kvlt .`
 ## 🚀 Quick start
 
 ```sh
-kvlt vault create --name dev                                # bootstrap a vault (encrypts to ~/.ssh/id_ed25519.pub)
-kvlt vault create --name prod -p ~/.ssh/team.pub            # encrypt to a non-default public key
-kvlt secret put --vault dev --key API_KEY --value sk-1234   # store a secret (lands in shell history)
-echo "$DB_PASS" | kvlt secret put --vault dev --key DB_PASS # stdin → no shell history
-kvlt secret put --vault dev --key TOKEN                     # interactive, echo off
-kvlt secret get --vault dev --key API_KEY                   # decrypt — prompts for SSH passphrase if not in agent
+kvlt vault create --name dev                                    # bootstrap a vault (encrypts to ~/.ssh/id_ed25519.pub)
+kvlt vault create --name prod -p ~/.ssh/team.pub                # encrypt to a non-default public key
+kvlt secret put --vault dev --key API_KEY --value sk-1234       # store a secret (lands in shell history)
+echo "$DB_PASS" | kvlt secret put --vault dev --key DB_PASS     # stdin → no shell history
+kvlt secret put --vault dev --key TOKEN                         # interactive, echo off
+kvlt secret import --vault dev --env ~/.env                     # bulk-import a dotenv file
+kvlt secret import --vault dev --file ~/kc.yaml --key KC        # one whole file stored as one secret
+kvlt secret get --vault dev --key API_KEY                       # decrypt — prompts for SSH passphrase if not in agent
 kvlt secret get --vault dev --key API_KEY -i ~/work/id_ed25519  # use a specific private key
-kvlt secret list --vault dev                                # names only, never values
-kvlt env --vault dev                                        # all secrets as `export KEY=VALUE` for `eval`
-kvlt run --vault dev -- npm start                           # exec child with vault secrets in env
+kvlt secret list --vault dev                                    # names only, never values
+kvlt secret delete --vault dev --key OLD_KEY                    # remove a secret (prompts unless --force)
+kvlt env --vault dev                                            # all secrets as `export KEY=VALUE` for `eval`
+kvlt run --vault dev -- npm start                               # exec child with vault secrets in env
+kvlt vault delete --name dev                                    # delete the vault + every secret in it (prompts)
 ```
 
 Override the default decrypt key globally with `KVLT_PRIVATE_KEY=/path/to/key`.
@@ -129,12 +133,16 @@ unlocked state, your fingerprint).
 In short: kvlt is exactly as protective as your SSH private key is, which
 is far better than "as protective as a text file in `$HOME`."
 
+Sharing a vault with teammates uses age's multi-recipient model — no
+shared keys, each person decrypts with their own SSH private key.
+Walkthrough in [docs/recipes.md](docs/recipes.md).
+
 ## ⚙️ How It Works
 
 `kvlt` is a CLI; nothing runs between invocations. Each command opens
 the vault config, talks to the backend, and exits.
 
-1. 🪪 **Pick a vault by name** — every verb takes a name (`dev`, `prod`, …); the name resolves to a backend through `vaults/<type>/<id>.yaml`
+1. 🪪 **Pick a vault by name** — every verb takes a name (`dev`, `prod`, …); the name resolves to a backend through `.kvlt/vaults/<type>/<id>.yaml`
 2. 🔐 **Default backend is `local` (age + SSH keys)** — `kvlt put` encrypts to one or more SSH public-key recipients via [age](https://github.com/FiloSottile/age); blobs land at `.kvlt/secrets/local_encryption/<vault>/<key>.age`. Decrypt requires the matching SSH private key — passphrase prompt fires on `/dev/tty` if your key isn't in ssh-agent already.
 3. 🔌 **Backends are pluggable** — `Provider` interface + factory registry. Adding SOPS, AWS Secrets Manager, etc. is one new file behind a `//go:build <tag>` guard; the base binary stays dependency-light.
 4. 🔁 **`migrate` is copy-then-swap** — list keys, copy each value to the new backend, write the new config, delete the old one. Source stays functional until the very last step. (Planned; the backend abstraction supports it cleanly.)

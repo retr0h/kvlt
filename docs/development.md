@@ -103,8 +103,8 @@ file — decryption uses the user's existing SSH private key.
 1. On `vault create local <name>` we read the recipient list (default
    `~/.ssh/id_ed25519.pub`, override with `--public-key`), validate each
    recipient parses as an SSH or age public key, and write the vault config YAML
-   at `vaults/local_encryption/{id}.yaml` with the canonical recipient strings
-   stored in `settings.recipients`.
+   at `.kvlt/vaults/local_encryption/{id}.yaml` with the canonical recipient
+   strings stored in `settings.recipients`.
 2. On `secret put`, we read the recipients from the config, call `age.Encrypt`
    with them, write the resulting age container to
    `.kvlt/secrets/local_encryption/<vault>/<key>.age` (mode `0600`, atomic via

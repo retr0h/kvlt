@@ -260,7 +260,7 @@ func TestStore_Open(t *testing.T) {
 			setup: func(t *testing.T) (*Store, string) {
 				t.Helper()
 				store, _ := newTestStore(t)
-				dir := filepath.Join(store.RepoPath(), "vaults", "imaginary")
+				dir := filepath.Join(store.RepoPath(), ".kvlt", "vaults", "imaginary")
 				if err := os.MkdirAll(dir, 0o700); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
@@ -337,7 +337,7 @@ func TestStore_List(t *testing.T) {
 			setup: func(t *testing.T) *Store {
 				t.Helper()
 				store, _ := newTestStore(t)
-				dir := filepath.Join(store.RepoPath(), "vaults", TypeLocalEncryption)
+				dir := filepath.Join(store.RepoPath(), ".kvlt", "vaults", TypeLocalEncryption)
 				if err := os.MkdirAll(dir, 0o700); err != nil {
 					t.Fatalf("mkdir: %v", err)
 				}
@@ -399,6 +399,89 @@ func TestStore_List(t *testing.T) {
 	}
 }
 
+func TestStore_Delete(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name        string
+		setup       func(t *testing.T) (*Store, string)
+		wantErr     error
+		assertGone  bool
+		assertOther string
+	}{
+		{
+			name: "deleting an existing vault removes config and secrets",
+			setup: func(t *testing.T) (*Store, string) {
+				t.Helper()
+				store, id := newTestStore(t)
+				rec := []string{id.Recipient().String()}
+				if _, err := store.Create("dev", TypeLocalEncryption, rec); err != nil {
+					t.Fatalf("Create: %v", err)
+				}
+				prov, err := store.Open("dev")
+				if err != nil {
+					t.Fatalf("Open: %v", err)
+				}
+				if err := prov.Put(context.Background(), "API_KEY", "x"); err != nil {
+					t.Fatalf("Put: %v", err)
+				}
+				return store, "dev"
+			},
+			assertGone: true,
+		},
+		{
+			name: "deleting one vault leaves siblings intact",
+			setup: func(t *testing.T) (*Store, string) {
+				t.Helper()
+				store, id := newTestStore(t)
+				rec := []string{id.Recipient().String()}
+				for _, n := range []string{"dev", "prod"} {
+					if _, err := store.Create(n, TypeLocalEncryption, rec); err != nil {
+						t.Fatalf("Create %q: %v", n, err)
+					}
+				}
+				return store, "dev"
+			},
+			assertGone:  true,
+			assertOther: "prod",
+		},
+		{
+			name: "deleting a missing vault returns ErrVaultNotFound",
+			setup: func(t *testing.T) (*Store, string) {
+				t.Helper()
+				s, _ := newTestStore(t)
+				return s, "ghost"
+			},
+			wantErr: ErrVaultNotFound,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			store, name := tc.setup(t)
+			err := store.Delete(name)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("Delete: want %v, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+			if tc.assertGone {
+				if _, oerr := store.Open(name); !errors.Is(oerr, ErrVaultNotFound) {
+					t.Fatalf("Open after Delete: want ErrVaultNotFound, got %v", oerr)
+				}
+			}
+			if tc.assertOther != "" {
+				if _, oerr := store.Open(tc.assertOther); oerr != nil {
+					t.Fatalf("sibling vault %q became inaccessible: %v", tc.assertOther, oerr)
+				}
+			}
+		})
+	}
+}
+
 // storeWithRawConfig writes a hand-crafted YAML body into a Store's
 // vaults/local_encryption/x.yaml so List has something to parse.
 // Used by the empty-fields cases for TestStore_List — typed setup
@@ -407,7 +490,7 @@ func TestStore_List(t *testing.T) {
 func storeWithRawConfig(t *testing.T, body string) *Store {
 	t.Helper()
 	store, _ := newTestStore(t)
-	dir := filepath.Join(store.RepoPath(), "vaults", "local_encryption")
+	dir := filepath.Join(store.RepoPath(), ".kvlt", "vaults", "local_encryption")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}

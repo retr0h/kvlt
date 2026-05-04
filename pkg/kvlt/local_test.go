@@ -556,6 +556,72 @@ func TestLocalProvider_List(t *testing.T) {
 	}
 }
 
+func TestLocalProvider_Delete(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name      string
+		setup     func(t *testing.T) (*LocalProvider, string)
+		wantErr   error
+		wantNoKey bool
+	}{
+		{
+			name: "deleting an existing key removes it from List",
+			setup: func(t *testing.T) (*LocalProvider, string) {
+				t.Helper()
+				p, _ := newTestProvider(t)
+				if err := p.Put(context.Background(), "API_KEY", "sk-1234"); err != nil {
+					t.Fatalf("Put: %v", err)
+				}
+				return p, "API_KEY"
+			},
+			wantNoKey: true,
+		},
+		{
+			name: "deleting a missing key returns ErrKeyNotFound",
+			setup: func(t *testing.T) (*LocalProvider, string) {
+				t.Helper()
+				p, _ := newTestProvider(t)
+				return p, "ABSENT"
+			},
+			wantErr: ErrKeyNotFound,
+		},
+		{
+			name: "invalid key name is rejected before touching disk",
+			setup: func(t *testing.T) (*LocalProvider, string) {
+				t.Helper()
+				p, _ := newTestProvider(t)
+				return p, "../escape"
+			},
+			wantErr: ErrInvalidConfig,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p, key := tc.setup(t)
+			err := p.Delete(context.Background(), key)
+			if tc.wantErr != nil {
+				if !errors.Is(err, tc.wantErr) {
+					t.Fatalf("Delete: want %v, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Delete: %v", err)
+			}
+			if tc.wantNoKey {
+				keys, lerr := p.List(context.Background())
+				if lerr != nil {
+					t.Fatalf("List after Delete: %v", lerr)
+				}
+				if slices.Contains(keys, key) {
+					t.Fatalf("Delete left key %q in vault: %v", key, keys)
+				}
+			}
+		})
+	}
+}
+
 func TestLocalProvider_MultiRecipientAnyIdentityCanDecrypt(t *testing.T) {
 	// One scenario, but it's a property of the (Put, Get) pair —
 	// asserts that secrets encrypted to N recipients are decryptable

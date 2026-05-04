@@ -45,20 +45,28 @@ var (
 	secretPutValueSet bool
 )
 
-// secretPutCmd encrypts and stores a secret. Three input modes,
-// resolved in priority order:
+// secretPutCmd encrypts and stores a single secret value. Three input
+// modes, resolved in priority order:
 //
 //  1. --value provided   → fastest; lands in shell history
 //  2. piped stdin        → recommended for scripts/CI
 //  3. interactive prompt → echo-off /dev/tty input
+//
+// File-based input lives on `secret import --file` instead — putting
+// it on `put` blurred the line between "store this one value" and
+// "structured input." Keep `put` for one value, `import` for files.
 var secretPutCmd = &cobra.Command{
 	Use:   "put",
-	Short: "Encrypt and store a secret in a vault",
+	Short: "Encrypt and store a single secret value in a vault",
 	Long: `Three input modes, resolved in priority order:
 
   kvlt secret put --vault dev --key API_KEY --value sk-1234   # inline
   echo "$VAL" | kvlt secret put --vault dev --key API_KEY     # stdin
-  kvlt secret put --vault dev --key API_KEY                   # interactive`,
+  kvlt secret put --vault dev --key API_KEY                   # interactive
+
+To store the contents of a file as a secret, use:
+
+  kvlt secret import --vault dev --key kubeconfig --file ~/kc.yaml`,
 	Args: cobra.NoArgs,
 	RunE: runSecretPut,
 }
@@ -69,7 +77,7 @@ func init() {
 	secretPutCmd.Flags().StringVarP(&secretPutKey, "key", "k", "",
 		"secret key to store (required)")
 	secretPutCmd.Flags().StringVar(&secretPutValue, "value", "",
-		"inline secret value (lands in shell history; prefer stdin or interactive)")
+		"inline secret value (lands in shell history; prefer stdin)")
 	_ = secretPutCmd.MarkFlagRequired("vault")
 	_ = secretPutCmd.MarkFlagRequired("key")
 	secretCmd.AddCommand(secretPutCmd)
@@ -105,8 +113,8 @@ func runSecretPut(cmd *cobra.Command, _ []string) error {
 
 // readPutInput resolves which input mode the user invoked and
 // returns (value, mode-label, error). The mode label is surfaced in
-// logs so an operator can distinguish "I piped it" from "I typed it
-// interactively" in audit output.
+// the success line so the operator can confirm "I piped it" vs "I
+// typed it" without re-checking flags.
 func readPutInput() (value, mode string, err error) {
 	// Mode 1: --value passed. Even an explicit empty string is
 	// honored — operators sometimes need to store empty values to

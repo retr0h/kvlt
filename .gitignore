@@ -9,5 +9,4 @@ docs/bun.lock
 /kvlt
 
 # Local-vault state created when running kvlt against the working tree.
-/vaults/
 /.kvlt/

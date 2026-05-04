@@ -68,6 +68,41 @@ func PassphrasePromptTTY(keyPath string) ([]byte, error) {
 	return pass, nil
 }
 
+// ConfirmDestructive shows a yes/no prompt on /dev/tty for the
+// "delete this thing" path. Returns true only on an exact "y" or
+// "yes" (case-insensitive). Anything else — empty enter, "n",
+// gibberish — returns false. We deliberately do NOT default to yes
+// on enter: destructive actions should require an affirmative key.
+//
+// Returns an error if no /dev/tty is available, so callers in CI
+// can rely on `--force` rather than silently waiting on Read.
+func ConfirmDestructive(question string) (bool, error) {
+	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
+	if err != nil {
+		return false, fmt.Errorf("open /dev/tty for confirm prompt: %w", err)
+	}
+	defer func() { _ = tty.Close() }()
+	if !term.IsTerminal(int(tty.Fd())) {
+		return false, errors.New("/dev/tty is not a terminal")
+	}
+
+	if _, err := fmt.Fprintf(tty, "%s [y/N]: ", question); err != nil {
+		return false, fmt.Errorf("write confirm prompt: %w", err)
+	}
+	var resp string
+	if _, err := fmt.Fscanln(tty, &resp); err != nil {
+		// Fscanln returns "unexpected newline" for an empty enter —
+		// treat that as a "no" rather than an error.
+		return false, nil //nolint:nilerr // empty input is a valid "no"
+	}
+	switch resp {
+	case "y", "Y", "yes", "Yes", "YES":
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
 // PromptSecretValue reads a secret value (`kvlt put <vault> <key>`
 // with no `=` and no piped stdin) from /dev/tty with echo
 // suppressed. Same /dev/tty rationale as PassphrasePromptTTY.
