@@ -102,7 +102,14 @@ vaults are referenced by name, not by backend type.`,
 // (no os.Exit inside RunE handlers).
 func Execute() {
 	rootCmd.SilenceUsage = true
+	// Swallow cobra's default "Error: …" rendering; we print our own
+	// themed line below. SilenceErrors = true tells cobra to return
+	// the error from Execute() without writing it to stderr first.
+	rootCmd.SilenceErrors = true
 	err := rootCmd.Execute()
+	if err != nil {
+		_, _ = fmt.Fprintln(os.Stderr, cli.Failure(os.Stderr, err.Error()))
+	}
 	if code := exitCodeFor(err); code != 0 {
 		os.Exit(code)
 	}
