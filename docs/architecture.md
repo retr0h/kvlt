@@ -11,10 +11,9 @@ The vault system is built around a **named-vault** architecture where:
 
 - **Named vaults**: Each vault instance has a user-defined name configured in
   `.kvlt/vaults/{vault-type}/{id}.yaml`.
-- **Vault types**: The underlying storage system (`local_encryption`, plus
-  optional `sops`, `aws-sm`, `azure-kv`, `1password`, `hashicorp-vault` behind
-  build tags) is specified per vault. The CLI accepts `local` as a typo-friendly
-  alias for `local_encryption`.
+- **Vault types**: The underlying storage system (`local_encryption` today,
+  optional `aws-sm` planned behind a build tag) is specified per vault. The CLI
+  accepts `local` as a typo-friendly alias for `local_encryption`.
 - **Clean interface**: All vaults implement a common `Provider` interface for
   consistent access patterns (see below).
 - **CLI-only surface**: every command opens the vault, talks to the backend, and
@@ -172,23 +171,6 @@ AWS Secrets Manager via `aws-sdk-go-v2`.
   shared AWS account.
 - **Errors**: missing secrets, auth failures, and rate-limits each map to a
   distinct error type so callers can retry intelligently.
-
-### `azure-kv` (build tag: `azure`)
-
-Azure Key Vault via `azure-sdk-for-go`. Auth via `DefaultAzureCredential`
-(managed identity > env > Azure CLI).
-
-### `1password` (build tag: `onepass`)
-
-Shells out to the `op` CLI. Auth options follow `op`'s own model — service
-account token (CI), desktop-app integration (local dev), or Connect server.
-Secret keys map to `op://<vault>/<item>/<field>` URIs; a bare key resolves to
-the `password` field by default.
-
-### `hashicorp-vault` (build tag: `hcv`)
-
-HashiCorp Vault or OpenBao via the HTTP API. Configurable mount path and KV
-version (v1 vs v2).
 
 ## Vault Migration
 

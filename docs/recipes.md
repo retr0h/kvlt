@@ -199,8 +199,8 @@ encrypted. Two implications:
 2. Force-pushing to delete history doesn't help — anyone who pulled before the
    deletion still has the blobs locally.
 
-This is true of every "encrypted files in git" system (SOPS, git-crypt, age
-itself). It's not a kvlt limitation; it's a property of cryptography meeting
+This is true of every "encrypted files in git" system (git-crypt, age itself,
+etc.). It's not a kvlt limitation; it's a property of cryptography meeting
 version control.
 
 ### CI is a "teammate" too
