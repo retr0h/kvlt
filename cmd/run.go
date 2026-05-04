@@ -132,7 +132,8 @@ func runRun(cmd *cobra.Command, args []string) error {
 	// branch correctly.
 	child := exec.Command(
 		childArgv[0],
-		childArgv[1:]...) //nolint:gosec // user explicitly chose this command
+		childArgv[1:]...,
+	) //nolint:gosec // user explicitly chose this command
 	child.Env = childEnv
 	child.Stdin = os.Stdin
 	child.Stdout = os.Stdout

@@ -91,9 +91,9 @@ forcing the AWS SDK on every consumer.
 | `golang.org/x/crypto/ssh`   | SSH key parsing (recipients/identities) |
 | `filippo.io/age` + `agessh` | Encryption + SSH-key support            |
 
-The library (`pkg/kvlt`) does no logging — errors flow back through `RunE`
-to a single rendering path in `cmd/root.go`. Cloud backends pull in their
-respective SDKs; see each `backend_*.go` for the exact import.
+The library (`pkg/kvlt`) does no logging — errors flow back through `RunE` to a
+single rendering path in `cmd/root.go`. Cloud backends pull in their respective
+SDKs; see each `backend_*.go` for the exact import.
 
 ## How the Local Backend Works
 
@@ -125,9 +125,9 @@ lock-in. Operators rotating recipients today must `vault migrate` to a new vault
 ## Test Conventions
 
 **One `Test<FunctionName>` per public function**, with a table-driven body
-covering every relevant scenario. Avoid scattering one-off `Test<Func>_<scenario>`
-functions across the file — they fragment what should be a single inventory of
-cases per behavior.
+covering every relevant scenario. Avoid scattering one-off
+`Test<Func>_<scenario>` functions across the file — they fragment what should be
+a single inventory of cases per behavior.
 
 ```go
 func TestCanonicalizeType(t *testing.T) {
@@ -170,13 +170,14 @@ Rules:
   (`ErrInvalidConfig`, `ErrKeyNotFound`, …), not against error message strings.
 - **Helpers (`newTestStore`, `generateSSHKeyPair`) call `t.Helper()`** so test
   failures point at the call site.
-- **Assert at system boundaries, not on internal state.** Round-trip via
-  `Put` → `Get` rather than mutating unexported fields. White-box access to
-  fields is reserved for read-only assertions on construction.
+- **Assert at system boundaries, not on internal state.** Round-trip via `Put` →
+  `Get` rather than mutating unexported fields. White-box access to fields is
+  reserved for read-only assertions on construction.
 - **No mocks for `filippo.io/age`.** It's audited and stable — round-trip
   behavior is the contract we test. Defensive `os.*` error returns inside
-  `writeFileAtomic` and friends are intentionally not chased to 100%; introducing
-  a filesystem abstraction to cover them adds more risk than it removes.
+  `writeFileAtomic` and friends are intentionally not chased to 100%;
+  introducing a filesystem abstraction to cover them adds more risk than it
+  removes.
 
 ## Sister Projects
 

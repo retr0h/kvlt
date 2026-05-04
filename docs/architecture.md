@@ -1,9 +1,9 @@
 # kvlt architecture
 
-`kvlt` is a small, pluggable secrets vault. This document covers the
-named-vault model, on-disk layout, provider interface, built-in backends,
-and operational primitives (migration, redaction, error handling).
-Implementation details live next to the code; this file is the conceptual map.
+`kvlt` is a small, pluggable secrets vault. This document covers the named-vault
+model, on-disk layout, provider interface, built-in backends, and operational
+primitives (migration, redaction, error handling). Implementation details live
+next to the code; this file is the conceptual map.
 
 ## Architecture
 
@@ -85,8 +85,8 @@ type Provider interface {
 ```
 
 The interface is intentionally minimal — anything fancier (rotation, lease,
-audit) is layered on top by callers, not pushed into the backend contract.
-Four methods is the contract; everything else is layered on top.
+audit) is layered on top by callers, not pushed into the backend contract. Four
+methods is the contract; everything else is layered on top.
 
 ## Vault Configuration
 

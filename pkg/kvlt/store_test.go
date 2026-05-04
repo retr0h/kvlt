@@ -126,7 +126,11 @@ func TestStore_Create(t *testing.T) {
 			assert: func(t *testing.T, cfg *Config) {
 				t.Helper()
 				if cfg.Type != TypeLocalEncryption {
-					t.Fatalf("Type after canonicalization: got %q, want %q", cfg.Type, TypeLocalEncryption)
+					t.Fatalf(
+						"Type after canonicalization: got %q, want %q",
+						cfg.Type,
+						TypeLocalEncryption,
+					)
 				}
 			},
 		},

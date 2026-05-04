@@ -68,9 +68,18 @@ vaults are referenced by name, not by backend type.`,
 				cli.Accent(out, line.name), cli.Mute(out, line.desc))
 		}
 		_, _ = fmt.Fprintln(out)
-		_, _ = fmt.Fprintf(out, "%s %s\n",
+		_, _ = fmt.Fprintf(
+			out,
+			"%s %s\n",
 			cli.Mute(out, "Run"),
-			cli.Accent(out, "kvlt <command> --help")+cli.Mute(out, " for command-specific options."))
+			cli.Accent(
+				out,
+				"kvlt <command> --help",
+			)+cli.Mute(
+				out,
+				" for command-specific options.",
+			),
+		)
 		_, _ = fmt.Fprintln(out)
 		return nil
 	},

@@ -145,10 +145,17 @@ func TestLocalProvider_Recipients(t *testing.T) {
 				t.Helper()
 				rec, ok := p.Recipients()[0].(*age.X25519Recipient)
 				if !ok {
-					t.Fatalf("Recipients()[0] type: %T, want *age.X25519Recipient", p.Recipients()[0])
+					t.Fatalf(
+						"Recipients()[0] type: %T, want *age.X25519Recipient",
+						p.Recipients()[0],
+					)
 				}
 				if rec.String() != owner.Recipient().String() {
-					t.Fatalf("Recipients()[0] = %q, want %q", rec.String(), owner.Recipient().String())
+					t.Fatalf(
+						"Recipients()[0] = %q, want %q",
+						rec.String(),
+						owner.Recipient().String(),
+					)
 				}
 			},
 		},

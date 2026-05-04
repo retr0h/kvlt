@@ -13,7 +13,8 @@ kvlt secret put --vault dev --key STRIPE_KEY                       # interactive
 ```
 
 The on-disk artifacts (`.kvlt/secrets/local_encryption/dev/*.age`) are valid age
-containers — `age -d -i ~/.ssh/id_ed25519 .kvlt/secrets/local_encryption/dev/API_KEY.age`
+containers —
+`age -d -i ~/.ssh/id_ed25519 .kvlt/secrets/local_encryption/dev/API_KEY.age`
 also works. `kvlt` is a convenience layer, not a format lock-in.
 
 ## 1. `direnv` — encrypted `.envrc`
@@ -89,11 +90,11 @@ kvlt run --vault dev -- bash -c 'curl -H "Authorization: Bearer $API_TOKEN" …'
 
 Difference vs. `eval "$(kvlt env --vault dev)"`:
 
-| Approach                          | Secrets land in…             | Persists?                | Best for                      |
-| --------------------------------- | ---------------------------- | ------------------------ | ----------------------------- |
-| `eval "$(kvlt env --vault dev)"`  | Your interactive shell       | Yes (until you `exit`)   | dev loops, REPL               |
-| `kvlt run --vault dev -- cmd`     | Just the child process       | No (gone when cmd exits) | one-off commands, scripts, CI |
-| `direnv` + `eval`                 | Your shell, _inside the dir_ | Yes, scoped to dir       | per-project default           |
+| Approach                         | Secrets land in…             | Persists?                | Best for                      |
+| -------------------------------- | ---------------------------- | ------------------------ | ----------------------------- |
+| `eval "$(kvlt env --vault dev)"` | Your interactive shell       | Yes (until you `exit`)   | dev loops, REPL               |
+| `kvlt run --vault dev -- cmd`    | Just the child process       | No (gone when cmd exits) | one-off commands, scripts, CI |
+| `direnv` + `eval`                | Your shell, _inside the dir_ | Yes, scoped to dir       | per-project default           |
 
 `kvlt run` is the right pattern for anything you wouldn't want sitting in `env`
 after the command finishes.
@@ -134,16 +135,15 @@ deploy:
 persisted. You replaced N GitLab variables with 1.
 
 **Adding a teammate:** they push a commit that adds their SSH pubkey as a
-recipient. Once `vault rotate` lands (planned), `kvlt vault rotate --name dev
---add ssh-ed25519:AAA…` will re-encrypt; until then, recreate the vault with the
-expanded recipient list. CI continues working with the unchanged
-`KVLT_PRIVATE_KEY`.
+recipient. Once `vault rotate` lands (planned),
+`kvlt vault rotate --name dev --add ssh-ed25519:AAA…` will re-encrypt; until
+then, recreate the vault with the expanded recipient list. CI continues working
+with the unchanged `KVLT_PRIVATE_KEY`.
 
 **Removing a teammate:** rotation removes them from new encryptions; old `.age`
-blobs would still decrypt with their old key (we can't unforget what was
-already encrypted) — also rotate the underlying secrets at the source (cloud
-provider IAM, etc.). kvlt makes this rotation cheap; it doesn't make it
-unnecessary.
+blobs would still decrypt with their old key (we can't unforget what was already
+encrypted) — also rotate the underlying secrets at the source (cloud provider
+IAM, etc.). kvlt makes this rotation cheap; it doesn't make it unnecessary.
 
 ## 4. GitHub Actions
 
