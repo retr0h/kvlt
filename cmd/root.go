@@ -22,6 +22,7 @@
 package cmd
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -31,6 +32,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/term"
+
+	"github.com/retr0h/kvlt/internal/cli"
 )
 
 // logger is the package-level slog logger, populated from initLogger
@@ -46,17 +49,44 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "kvlt",
 	Short: "Pluggable secrets vault — age + SSH keys by default, cloud backends optional",
-	Long: `
-█▄▀ █░█ █░░ ▀█▀
-█░█ ▀▄▀ █▄▄ ░█░
-
-kvlt is a small, dependency-light secrets vault. The default backend
+	Long: `kvlt is a small, dependency-light secrets vault. The default backend
 encrypts with age using your existing SSH keys; pluggable backends
 (SOPS, AWS Secrets Manager, Azure Key Vault, 1Password, HashiCorp
 Vault) can be opted in via build tags without touching caller code —
 vaults are referenced by name, not by backend type.`,
 	RunE: func(c *cobra.Command, _ []string) error {
-		return c.Help()
+		// Bare `kvlt` prints the styled banner + a terse subcommand
+		// list. We deliberately avoid c.Help()'s wall-of-text default —
+		// the goal is a welcoming first impression that matches the
+		// install script's aesthetic.
+		out := c.OutOrStdout()
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprint(out, cli.Banner(out))
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out, cli.Mute(out, "Pluggable secrets vault. Local-first. No daemon."))
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintln(out, cli.Mute(out, "Commands:"))
+		for _, line := range []struct{ name, desc string }{
+			{"vault create", "create a new vault"},
+			{"vault list", "list configured vaults"},
+			{"vault info", "show one vault's id, type, recipients"},
+			{"secret put", "encrypt and store a secret"},
+			{"secret get", "decrypt and print a secret"},
+			{"secret list", "list secret keys (never values)"},
+			{"env", "emit `export KEY=VALUE` for `eval`"},
+			{"run", "exec a child with vault secrets in env"},
+			{"themes", "preview the CLI color themes"},
+			{"version", "print build identity"},
+		} {
+			_, _ = fmt.Fprintf(out, "  %-14s  %s\n",
+				cli.Accent(out, line.name), cli.Mute(out, line.desc))
+		}
+		_, _ = fmt.Fprintln(out)
+		_, _ = fmt.Fprintf(out, "%s %s\n",
+			cli.Mute(out, "Run"),
+			cli.Accent(out, "kvlt <command> --help")+cli.Mute(out, " for command-specific options."))
+		_, _ = fmt.Fprintln(out)
+		return nil
 	},
 }
 
@@ -64,10 +94,17 @@ vaults are referenced by name, not by backend type.`,
 // the help-text dump on runtime failures (config not found, bind:port
 // in use, …) where it's just noise. Cobra already prints "Error: <err>"
 // on its own.
+//
+// Exit code comes from exitCodeFor — the single place that maps
+// library sentinels (ErrVaultNotFound, ErrKeyNotFound, ErrAuthFailed)
+// to the documented shell exit codes. Verbs return errors verbatim;
+// the translation lives here so the command bodies stay testable
+// (no os.Exit inside RunE handlers).
 func Execute() {
 	rootCmd.SilenceUsage = true
-	if err := rootCmd.Execute(); err != nil {
-		os.Exit(1)
+	err := rootCmd.Execute()
+	if code := exitCodeFor(err); code != 0 {
+		os.Exit(code)
 	}
 }
 
@@ -85,12 +122,18 @@ func init() {
 // KVLT_REPO_PATH=/var/lib/kvlt overrides the repo.path default.
 // Defaults seeded here are the source of truth; flags binding to the
 // same key win over both env and default at runtime.
+//
+// repo.path is the repository root — the directory that contains the
+// `vaults/` and `.kvlt/secrets/` trees. Defaults to the current
+// working directory so `kvlt vault create --name dev` from inside a
+// project lays state alongside the project itself, matching swamp's
+// convention.
 func initConfig() {
 	viper.SetEnvPrefix("kvlt")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
-	viper.SetDefault("repo.path", ".kvlt")
+	viper.SetDefault("repo.path", ".")
 }
 
 // initLogger swaps the package-level logger to a tint handler with

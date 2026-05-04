@@ -1,21 +1,143 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # kvlt installer
-# Usage: curl -fsSL https://github.com/retr0h/kvlt/raw/main/install.sh | sh
+# Usage: curl -fsSL https://github.com/retr0h/kvlt/raw/main/install.sh | bash
 #
 # Env overrides:
 #   KVLT_VERSION       install a specific version (e.g. 1.1.1) instead of latest
 #   KVLT_INSTALL_DIR   force install destination, skipping the default rules
 
-set -eu
+set -euo pipefail
+APP=kvlt
+
+# Visual style matches kvlt's `ash` runtime theme so curl|bash and
+# the installed binary share a palette. ACCENT is the dusty-brick
+# (xterm 131, #af5f5f); named by role, not hue, so a future palette
+# swap is one line.
+MUTED='\033[0;2m'
+RED='\033[0;31m'
+ACCENT='\033[38;5;131m'
+NC='\033[0m' # reset
 
 err() {
-    printf 'kvlt: %s\n' "$1" >&2
+    printf "${RED}kvlt: %s${NC}\n" "$1" >&2
     exit 1
+}
+
+print_message() {
+    local level=$1
+    local message=$2
+    local color=""
+    case $level in
+        info)    color="${NC}" ;;
+        warning) color="${ACCENT}" ;;
+        error)   color="${RED}" ;;
+    esac
+    printf "${color}${message}${NC}\n"
 }
 
 have() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# unbuffered_sed picks the right -u/-l/no-buffer flag for the local
+# sed; required so the progress reader sees curl trace lines as they
+# arrive rather than after the download completes.
+unbuffered_sed() {
+    if echo | sed -u -e "" >/dev/null 2>&1; then
+        sed -nu "$@"
+    elif echo | sed -l -e "" >/dev/null 2>&1; then
+        sed -nl "$@"
+    else
+        local pad
+        pad="$(printf "\n%512s" "")"
+        sed -ne "s/$/\\${pad}/" "$@"
+    fi
+}
+
+print_progress() {
+    local bytes="$1"
+    local length="$2"
+    [ "$length" -gt 0 ] || return 0
+
+    local width=50
+    local percent=$(( bytes * 100 / length ))
+    [ "$percent" -gt 100 ] && percent=100
+    local on=$(( percent * width / 100 ))
+    local off=$(( width - on ))
+
+    local filled
+    filled=$(printf "%*s" "$on" "")
+    filled=${filled// /■}
+    local empty
+    empty=$(printf "%*s" "$off" "")
+    empty=${empty// /･}
+
+    printf "\r${ACCENT}%s%s %3d%%${NC}" "$filled" "$empty" "$percent" >&4
+}
+
+# download_with_progress reads curl --trace-ascii output to drive a
+# block-character progress bar. Falls back to plain curl/wget when:
+#   - stderr is not a TTY (CI, piped to file)
+#   - curl is unavailable (we use wget without progress)
+#   - the trace plumbing fails for any reason
+download_with_progress() {
+    local url="$1"
+    local output="$2"
+
+    if [ -t 2 ]; then
+        exec 4>&2
+    else
+        exec 4>/dev/null
+    fi
+
+    local tmp_dir=${TMPDIR:-/tmp}
+    local basename="${tmp_dir}/kvlt_install_$$"
+    local tracefile="${basename}.trace"
+
+    rm -f "$tracefile"
+    mkfifo "$tracefile"
+
+    # Hide cursor while the bar animates.
+    printf "\033[?25l" >&4
+    trap "trap - RETURN; rm -f \"$tracefile\"; printf '\033[?25h' >&4; exec 4>&-" RETURN
+
+    (
+        curl --trace-ascii "$tracefile" -fsSL -o "$output" "$url"
+    ) &
+    local curl_pid=$!
+
+    unbuffered_sed \
+        -e 'y/ACDEGHLNORTV/acdeghlnortv/' \
+        -e '/^0000: content-length:/p' \
+        -e '/^<= recv data/p' \
+        "$tracefile" | \
+    {
+        local length=0
+        local bytes=0
+
+        while IFS=" " read -r -a line; do
+            [ "${#line[@]}" -lt 2 ] && continue
+            local tag="${line[0]} ${line[1]}"
+
+            if [ "$tag" = "0000: content-length:" ]; then
+                length="${line[2]}"
+                length=$(echo "$length" | tr -d '\r')
+                bytes=0
+            elif [ "$tag" = "<= recv" ]; then
+                local size="${line[3]}"
+                bytes=$(( bytes + size ))
+                if [ "$length" -gt 0 ]; then
+                    print_progress "$bytes" "$length"
+                fi
+            fi
+        done
+    }
+
+    wait $curl_pid
+    local ret=$?
+    echo "" >&4
+    return $ret
 }
 
 http_get() {
@@ -23,6 +145,23 @@ http_get() {
         curl -fsSL "$1"
     elif have wget; then
         wget -qO- "$1"
+    else
+        err "neither curl nor wget found on PATH"
+    fi
+}
+
+# fetch downloads $url to $output, using the styled progress bar when
+# possible and degrading gracefully otherwise. Either curl or wget is
+# acceptable; the progress UI only fires for the curl + TTY path.
+fetch() {
+    local url="$1"
+    local output="$2"
+    if have curl && [ -t 2 ]; then
+        download_with_progress "$url" "$output" || curl -fsSL -o "$output" "$url"
+    elif have curl; then
+        curl -fsSL -o "$output" "$url"
+    elif have wget; then
+        wget -q -O "$output" "$url"
     else
         err "neither curl nor wget found on PATH"
     fi
@@ -98,17 +237,11 @@ download() {
     base=https://github.com/retr0h/kvlt/releases/download/v${version}
     asset=kvlt_${version}_${os}_${arch}
 
-    if have curl; then
-        curl -fsSL -o "$tmp/kvlt" "$base/$asset" \
-            || err "failed to download $base/$asset"
-        curl -fsSL -o "$tmp/checksums.txt" "$base/checksums.txt" \
-            || err "failed to download $base/checksums.txt"
-    else
-        wget -q -O "$tmp/kvlt" "$base/$asset" \
-            || err "failed to download $base/$asset"
-        wget -q -O "$tmp/checksums.txt" "$base/checksums.txt" \
-            || err "failed to download $base/checksums.txt"
-    fi
+    print_message info "\n${MUTED}Installing ${NC}kvlt ${MUTED}version: ${NC}$version"
+    fetch "$base/$asset" "$tmp/kvlt" \
+        || err "failed to download $base/$asset"
+    fetch "$base/checksums.txt" "$tmp/checksums.txt" \
+        || err "failed to download $base/checksums.txt"
 }
 
 verify_checksum() {
@@ -125,7 +258,7 @@ verify_checksum() {
         err "neither shasum nor sha256sum found on PATH"
     fi
     if [ "$expected" != "$actual" ]; then
-        printf 'kvlt: checksum mismatch for %s\n  expected: %s\n  actual:   %s\n' \
+        printf "${RED}kvlt: checksum mismatch for %s${NC}\n  expected: %s\n  actual:   %s\n" \
             "$asset" "$expected" "$actual" >&2
         exit 1
     fi
@@ -150,10 +283,19 @@ maybe_symlink() {
 }
 
 print_summary() {
-    printf 'kvlt v%s installed to %s/kvlt\n' "$version" "$install_dir"
+    printf "\n"
+    printf "${MUTED}█▄▀ █░█ █░░ ▀█▀${NC}   ${MUTED}installed to${NC} ${ACCENT}%s/kvlt${NC}\n" "$install_dir"
+    printf "${MUTED}█░█ ▀▄▀ █▄▄ ░█░${NC}   ${MUTED}version${NC} ${NC}%s${NC}\n" "$version"
+    printf "\n"
     if ! path_contains "$install_dir"; then
-        printf '\nAdd this to your shell rc:\n  export PATH="%s:$PATH"\n' "$install_dir"
+        print_message warning "Add this to your shell rc:"
+        printf "  ${NC}export PATH=\"%s:\$PATH\"${NC}\n\n" "$install_dir"
     fi
+    printf "${MUTED}Bootstrap a vault:${NC}\n"
+    printf "  kvlt vault create --name dev   ${MUTED}# encrypts to ~/.ssh/id_ed25519.pub${NC}\n"
+    printf "\n"
+    printf "${MUTED}Docs:${NC} https://github.com/retr0h/kvlt\n"
+    printf "\n"
 }
 
 main() {

@@ -22,8 +22,6 @@ package cmd
 
 import (
 	"errors"
-	"fmt"
-	"os"
 
 	"github.com/retr0h/kvlt/pkg/kvlt"
 )
@@ -32,33 +30,38 @@ import (
 // Documented here — and in each verb's --help text — so shell
 // scripts can branch on them without parsing strings:
 //
-//	kvlt secret get foo BAR 2>/dev/null
+//	kvlt secret get --vault foo --key BAR 2>/dev/null
 //	case $? in
 //	  0) ;; # success
 //	  2) echo "missing" ;;
 //	  3) echo "auth failed" ;;
 //	esac
 const (
+	exitGeneric    = 1
 	exitNotFound   = 2
 	exitAuthFailed = 3
 )
 
-// mapGetError converts library-typed errors into shell-style exit
-// codes via os.Exit. We print the diagnostic to stderr ourselves so
-// the operator sees something actionable, then call os.Exit
-// explicitly: cobra has no first-class "exit with code N" hook —
-// its RunE-error path always exits 1.
-//
-// Errors that don't match a known sentinel pass through unchanged
-// for cobra's default handling.
-func mapGetError(err error) error {
+// mapGetError annotates a library error so the top-level Execute can
+// translate it to the right shell exit code. Verbs return the result
+// directly from RunE — no os.Exit here, which would bypass any
+// cleanup deferred by the verb and make every command unit-testable
+// only via subprocess. Errors that don't match a known sentinel are
+// returned unchanged so cobra falls back to its generic error path.
+func mapGetError(err error) error { return err }
+
+// exitCodeFor returns the shell exit code Execute should use for err.
+// Centralizes the sentinel-to-code mapping so verbs only have to
+// return their library errors verbatim.
+func exitCodeFor(err error) int {
 	switch {
+	case err == nil:
+		return 0
 	case errors.Is(err, kvlt.ErrVaultNotFound), errors.Is(err, kvlt.ErrKeyNotFound):
-		fmt.Fprintf(os.Stderr, "kvlt: %v\n", err)
-		os.Exit(exitNotFound)
+		return exitNotFound
 	case errors.Is(err, kvlt.ErrAuthFailed):
-		fmt.Fprintf(os.Stderr, "kvlt: %v\n", err)
-		os.Exit(exitAuthFailed)
+		return exitAuthFailed
+	default:
+		return exitGeneric
 	}
-	return err
 }
