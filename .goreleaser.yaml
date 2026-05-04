@@ -1,0 +1,75 @@
+---
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    # Stamp build identity into the binary so `kvlt version` reports
+    # the release tag, commit, and build date instead of the empty
+    # defaults caarlos0/go-version falls back to under `go build`.
+    ldflags:
+      - -s -w -X {{ .ModulePath }}/internal/version.Date={{ .CommitDate }}
+      - -X {{ .ModulePath }}/internal/version.Commit={{ .Commit }}
+      - -X {{ .ModulePath }}/internal/version.Version={{ .Version }}
+      - -X {{ .ModulePath }}/internal/version.BuiltBy=goreleaser
+
+archives:
+  - formats:
+    - binary
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  version_template: "{{ incpatch .Version }}.dev"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^test(\\(.+?\\))?:"
+      - "^chore(\\(.+?\\))?:"
+      - "merge conflict"
+      - Merge pull request
+      - Merge remote-tracking branch
+      - Merge branch
+      - go mod tidy
+  # Regexes accept the conventional-commits optional scope — both
+  # `feat: foo` AND `feat(scope): foo` match. Without the `(\(.+?\))?`
+  # every scoped subject fell through to "Others", making the
+  # grouping useless.
+  groups:
+    - title: "Features"
+      regexp: "^.*?feat(\\(.+?\\))?:.*$"
+      order: 0
+    - title: "Bug fixes"
+      regexp: "^.*?fix(\\(.+?\\))?:.*$"
+      order: 1
+    - title: "Performance"
+      regexp: "^.*?perf(\\(.+?\\))?:.*$"
+      order: 2
+    - title: "Refactor"
+      regexp: "^.*?refactor(\\(.+?\\))?:.*$"
+      order: 3
+    - title: "Docs"
+      regexp: "^.*?docs(\\(.+?\\))?:.*$"
+      order: 4
+    - title: "CI"
+      regexp: "^.*?ci(\\(.+?\\))?:.*$"
+      order: 5
+    - title: "Build"
+      regexp: "^.*?build(\\(.+?\\))?:.*$"
+      order: 6
+    - title: "Style"
+      regexp: "^.*?style(\\(.+?\\))?:.*$"
+      order: 7
+    - title: Others
+      order: 999
