@@ -59,7 +59,7 @@ func TestStore_CreateAndOpenRoundTrip(t *testing.T) {
 	store, id := newTestStore(t)
 	ctx := context.Background()
 
-	cfg, err := store.Create("dev", TypeLocalEncryption, []age.Recipient{id.Recipient()})
+	cfg, err := store.Create("dev", TypeLocalEncryption, []string{id.Recipient().String()})
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestStore_OpenMissingVaultReturnsErrVaultNotFound(t *testing.T) {
 func TestStore_CreateDuplicateNameReturnsErrVaultAlreadyExists(t *testing.T) {
 	t.Parallel()
 	store, id := newTestStore(t)
-	rec := []age.Recipient{id.Recipient()}
+	rec := []string{id.Recipient().String()}
 
 	if _, err := store.Create("dev", TypeLocalEncryption, rec); err != nil {
 		t.Fatalf("first Create: %v", err)
@@ -111,7 +111,7 @@ func TestStore_CreateDuplicateNameReturnsErrVaultAlreadyExists(t *testing.T) {
 func TestStore_CreateRejectsUnknownType(t *testing.T) {
 	t.Parallel()
 	store, id := newTestStore(t)
-	_, err := store.Create("dev", "unknown-type", []age.Recipient{id.Recipient()})
+	_, err := store.Create("dev", "unknown-type", []string{id.Recipient().String()})
 	if !errors.Is(err, ErrInvalidConfig) {
 		t.Fatalf("Create with unknown type: got %v, want ErrInvalidConfig", err)
 	}
@@ -129,7 +129,7 @@ func TestStore_CreateRejectsEmptyRecipients(t *testing.T) {
 func TestStore_CreateRejectsBadName(t *testing.T) {
 	t.Parallel()
 	store, id := newTestStore(t)
-	rec := []age.Recipient{id.Recipient()}
+	rec := []string{id.Recipient().String()}
 
 	cases := []struct {
 		name  string
@@ -154,7 +154,7 @@ func TestStore_CreateRejectsBadName(t *testing.T) {
 func TestStore_ListReturnsCreatedVaultsSorted(t *testing.T) {
 	t.Parallel()
 	store, id := newTestStore(t)
-	rec := []age.Recipient{id.Recipient()}
+	rec := []string{id.Recipient().String()}
 
 	for _, name := range []string{"prod", "dev", "staging"} {
 		if _, err := store.Create(name, TypeLocalEncryption, rec); err != nil {
@@ -194,7 +194,7 @@ func TestStore_OpenReadsRecipientsFromYAML(t *testing.T) {
 	store, id := newTestStore(t)
 	ctx := context.Background()
 
-	if _, err := store.Create("dev", TypeLocalEncryption, []age.Recipient{id.Recipient()}); err != nil {
+	if _, err := store.Create("dev", TypeLocalEncryption, []string{id.Recipient().String()}); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 

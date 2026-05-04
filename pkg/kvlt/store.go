@@ -86,21 +86,31 @@ func (s *Store) RepoPath() string { return s.repoPath }
 // Returns ErrVaultAlreadyExists if a vault with this name is already
 // configured (regardless of type).
 //
-// recipients defines who can decrypt secrets put into this vault. At
-// least one is required — a vault encrypted to nobody is treated as
-// a misconfiguration, since nothing put into it could ever be read
-// back. Recipients are stored as their canonical string form
-// (`ssh-ed25519 AAA…`, `age1…`) in the YAML so a reader can audit
-// the recipient list without parsing key blobs.
-func (s *Store) Create(name, vaultType string, recipients []age.Recipient) (*Config, error) {
+// recipientStrings is a list of authorized_keys-style SSH lines or
+// age-native recipient strings (`age1…`); each is validated before
+// the vault is written. At least one valid recipient is required —
+// a vault encrypted to nobody is treated as a misconfiguration,
+// since nothing put into it could ever be read back. The strings
+// are stored as-passed in the config, so an operator auditing the
+// YAML sees exactly what was given (and can paste it directly into
+// `ssh-keygen -lf -` to confirm a fingerprint).
+func (s *Store) Create(name, vaultType string, recipientStrings []string) (*Config, error) {
 	if err := validateVaultName(name); err != nil {
 		return nil, err
 	}
 	if vaultType != TypeLocalEncryption {
 		return nil, fmt.Errorf("%w: unknown vault type %q", ErrInvalidConfig, vaultType)
 	}
-	if len(recipients) == 0 {
+	if len(recipientStrings) == 0 {
 		return nil, fmt.Errorf("%w: at least one recipient is required", ErrInvalidConfig)
+	}
+	// Validate every recipient string up front — the worst time to
+	// discover a bad recipient is on first Get of a secret already
+	// encrypted to it.
+	for _, rs := range recipientStrings {
+		if _, err := parseRecipientString(rs); err != nil {
+			return nil, fmt.Errorf("%w: recipient %q: %w", ErrInvalidConfig, rs, err)
+		}
 	}
 
 	// Check for existing vault by name across every type — names are
@@ -118,14 +128,27 @@ func (s *Store) Create(name, vaultType string, recipients []age.Recipient) (*Con
 		ID:       id,
 		Name:     name,
 		Type:     vaultType,
-		Settings: make(map[string]any),
+		Settings: map[string]any{
+			"recipients": stringsToAny(recipientStrings),
+		},
 	}
-	cfg.Settings["recipients"] = serializeRecipients(recipients)
 
 	if err := s.writeConfig(cfg); err != nil {
 		return nil, err
 	}
 	return cfg, nil
+}
+
+// stringsToAny widens []string to []any for storage in
+// map[string]any — yaml.v3 round-trips slices as []any and a
+// hand-written []string would deserialize back as []any anyway,
+// causing surprising type mismatches. Keep both ends []any.
+func stringsToAny(s []string) []any {
+	out := make([]any, len(s))
+	for i, v := range s {
+		out[i] = v
+	}
+	return out
 }
 
 // Open returns the Provider for the named vault. Returns
@@ -298,19 +321,6 @@ func newVaultID() (string, error) {
 		return "", fmt.Errorf("generate vault ID: %w", err)
 	}
 	return hex.EncodeToString(b[:]), nil
-}
-
-// serializeRecipients renders a slice of age.Recipients to their
-// canonical string form for storage in YAML. SSH recipients
-// stringify as `ssh-ed25519 AAA…`; age-native recipients as
-// `age1…`. Every concrete type that age exposes implements
-// fmt.Stringer.
-func serializeRecipients(recipients []age.Recipient) []string {
-	out := make([]string, 0, len(recipients))
-	for _, r := range recipients {
-		out = append(out, fmt.Sprint(r))
-	}
-	return out
 }
 
 // parseRecipientString parses one stored recipient back into an
