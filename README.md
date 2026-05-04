@@ -111,6 +111,7 @@ by callers, not pushed into the backend.
 
 ## 📚 Docs
 
+- [docs/recipes.md](docs/recipes.md) — `.envrc` / `direnv`, `kvlt run`, GitLab + GitHub CI, Unix-pipe patterns, dotfiles, multi-vault setups
 - [docs/architecture.md](docs/architecture.md) — provider interface, on-disk layout, backend internals, migration semantics
 - [docs/development.md](docs/development.md) — setup, testing, conventions
 - [docs/contributing.md](docs/contributing.md) — PR workflow
