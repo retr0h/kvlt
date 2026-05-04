@@ -25,13 +25,13 @@ A single-binary secrets vault for projects that don't have HashiCorp
 Vault and don't want one. Encrypts with [age](https://github.com/FiloSottile/age)
 using your existing SSH keys; named vaults give you a stable call
 site (`kvlt get prod API_KEY`) regardless of whether the backend is
-local age files today, SOPS or AWS Secrets Manager tomorrow.
+local age files today, AWS Secrets Manager tomorrow.
 
 ## ✨ Features
 
 - 🔐 **age + SSH keys** — encrypts with `~/.ssh/id_ed25519.pub`, decrypts with the matching private key. Borrows your existing protection chain (passphrase + ssh-agent + Touch ID via [secretive](https://github.com/maxgoedjen/secretive)); kvlt doesn't reinvent the lock.
 - 🪪 **Named vaults** — `kvlt get prod API_KEY`, never `kvlt get_aws(…)`; the backend is an implementation detail. Switching from local age files to AWS Secrets Manager later doesn't touch a single call site.
-- 🔌 **Pluggable backends** — `Provider` interface + factory registry. SOPS, AWS Secrets Manager, Azure Key Vault, 1Password each become one new file behind a `//go:build <tag>` guard so the base binary stays dependency-light.
+- 🔌 **Pluggable backends** — `Provider` interface + factory registry. AWS Secrets Manager (planned) sits behind a `//go:build aws` guard so the base binary stays dependency-light.
 - 👥 **Multi-recipient** — encrypt to N SSH public keys, any one of those private keys can decrypt. The team-sharing escape hatch.
 - 🤫 **Stdin / TTY input modes** — `echo $VAL | kvlt put` keeps secrets out of shell history; bare `kvlt put` prompts with echo off.
 - 🐚 **Shell-friendly** — `kvlt env vault` for `eval "$(…)"` direnv integration; `kvlt run vault -- cmd` for scoped env injection like `aws-vault exec` / `op run`.
@@ -144,7 +144,7 @@ the vault config, talks to the backend, and exits.
 
 1. 🪪 **Pick a vault by name** — every verb takes a name (`dev`, `prod`, …); the name resolves to a backend through `.kvlt/vaults/<type>/<id>.yaml`
 2. 🔐 **Default backend is `local` (age + SSH keys)** — `kvlt put` encrypts to one or more SSH public-key recipients via [age](https://github.com/FiloSottile/age); blobs land at `.kvlt/secrets/local_encryption/<vault>/<key>.age`. Decrypt requires the matching SSH private key — passphrase prompt fires on `/dev/tty` if your key isn't in ssh-agent already.
-3. 🔌 **Backends are pluggable** — `Provider` interface + factory registry. Adding SOPS, AWS Secrets Manager, etc. is one new file behind a `//go:build <tag>` guard; the base binary stays dependency-light.
+3. 🔌 **Backends are pluggable** — `Provider` interface + factory registry. Adding AWS Secrets Manager is one new file behind a `//go:build aws` guard; the base binary stays dependency-light.
 4. 🔁 **`migrate` is copy-then-swap** — list keys, copy each value to the new backend, write the new config, delete the old one. Source stays functional until the very last step. (Planned; the backend abstraction supports it cleanly.)
 
 The contract every backend implements is four methods (`Get` / `Put` /
@@ -154,8 +154,6 @@ by callers, not pushed into the backend.
 ## 💡 Inspiration
 
 - **[age](https://github.com/FiloSottile/age)** — pure-Go, audited, SSH-key-friendly encryption. kvlt is a vault wrapper around it; the crypto is age's.
-- **[SOPS](https://github.com/getsops/sops)** — the "encrypted files in a repo, no server required" mindset
-- **[grind](https://github.com/retr0h/grind), [tlock](https://github.com/retr0h/tlock), [meshx](https://github.com/retr0h/meshx)** — sibling retr0h CLIs; same scaffold, same justfile setup, same MIT vibes
 
 ## 🔀 Alternatives
 
@@ -163,7 +161,6 @@ by callers, not pushed into the backend.
 | --------------------------------------------------------- | ------------------------------------------------- |
 | [HashiCorp Vault](https://www.vaultproject.io/)           | Full-featured secret-management platform          |
 | [OpenBao](https://openbao.org/)                           | Open-source fork of Vault                         |
-| [SOPS](https://github.com/getsops/sops)                   | Encrypted files in git, age/PGP/cloud-KMS keys    |
 | [1Password CLI](https://developer.1password.com/docs/cli) | If you already live in 1Password                  |
 | [pass](https://www.passwordstore.org/)                    | GPG-encrypted files, the Unix way                 |
 
@@ -184,7 +181,7 @@ Up next — only what earns its keep:
 
 - [ ] 🤝 **ssh-agent integration** — friction-free decrypt; Touch ID via [Secretive](https://github.com/maxgoedjen/secretive) on macOS without re-prompting per read.
 - [ ] 🔁 **`vault migrate`** — copy-then-swap, named-vault payoff: change backend type without touching call sites.
-- [ ] 🔌 **AWS Secrets Manager backend** (`-tags aws`) — only if a real "dev local → prod cloud" use case shows up. Other backends (SOPS, Azure, 1Password, HashiCorp Vault) are intentionally **not** on the roadmap; if you live in those tools, use them directly.
+- [ ] 🔌 **AWS Secrets Manager backend** (`-tags aws`) — only if a real "dev local → prod cloud" use case shows up. Other tools (Azure Key Vault, 1Password, HashiCorp Vault) are intentionally **not** on the roadmap; if you live in those, use them directly.
 
 ## 📚 Docs
 

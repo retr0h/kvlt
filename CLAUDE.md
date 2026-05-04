@@ -11,9 +11,9 @@ to the backend, and exits. The default backend encrypts with
 [age](https://github.com/FiloSottile/age) using the user's existing SSH
 keys (`~/.ssh/id_ed25519`); the protection chain is the SSH protection
 chain (passphrase + ssh-agent + Touch ID via secretive on macOS) — kvlt
-doesn't reinvent the lock. Cloud backends (SOPS, AWS Secrets Manager,
-Azure Key Vault, 1Password, HashiCorp Vault) sit behind build tags so
-consumers who don't need them never pay the SDK cost.
+doesn't reinvent the lock. The cloud backend (AWS Secrets Manager,
+planned) sits behind a build tag so consumers who don't need it never
+pay the SDK cost.
 
 The named-vault design — callers reference vaults by user-defined name,
 never by backend type — means a project can start on `local_encryption`
@@ -59,10 +59,9 @@ adapter — never duplicate logic from the package into commands.
   key parsing. Pure Go; CGO is off in goreleaser.
 - **Cross-platform** — darwin/linux/windows × amd64/arm64 in the release
   matrix. No platform-specific syscalls in the core.
-- **Backends behind build tags** — `sops`, `aws`, `azure`, `onepass`, `hcv`. The
-  base binary stays small; cloud variants are separate goreleaser builds.
-  Each backend self-registers in its own file's `init()` via
-  `kvlt.RegisterBackend(typeID, factory)`.
+- **Backends behind build tags** — `aws` is the only planned non-default
+  backend; the base binary stays small. Each backend self-registers in its
+  own file's `init()` via `kvlt.RegisterBackend(typeID, factory)`.
 - **Named vaults, not backend types** — every CLI verb takes a vault name; the
   name resolves to a backend via `.kvlt/vaults/<type>/<id>.yaml`.
 - **Recipients in config, identities at the edge** — vault YAML lists recipient
@@ -160,6 +159,6 @@ Up next (only what earns its keep):
 - [ ] `kvlt vault migrate` (copy-then-swap-config)
 - [ ] AWS Secrets Manager backend (`-tags aws`) — gated on a real "dev local → prod cloud" use case
 
-Intentionally **not** on the roadmap: SOPS, Azure Key Vault, 1Password, HashiCorp
-Vault / OpenBao. If you live in those tools, use them directly — kvlt's pitch is
-specifically for projects that don't have / don't want them.
+Intentionally **not** on the roadmap: Azure Key Vault, 1Password, HashiCorp
+Vault / OpenBao. If you live in those tools, use them directly — kvlt's pitch
+is specifically for projects that don't have / don't want them.

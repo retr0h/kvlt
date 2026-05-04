@@ -179,11 +179,8 @@ Rules:
   introducing a filesystem abstraction to cover them adds more risk than it
   removes.
 
-## Sister Projects
+## Shared tooling
 
 | Project                                                        | Description                             |
 | -------------------------------------------------------------- | --------------------------------------- |
-| [tlock](https://github.com/retr0h/tlock)                       | Terminal lock screen for macOS          |
-| [meshx](https://github.com/retr0h/meshx)                       | Glitched-out terminal Meshtastic client |
-| [grind](https://github.com/retr0h/grind)                       | (sister CLI)                            |
 | [osapi-justfiles](https://github.com/osapi-io/osapi-justfiles) | Shared justfile recipes for Go projects |
