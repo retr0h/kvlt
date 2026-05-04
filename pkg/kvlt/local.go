@@ -288,6 +288,23 @@ func (p *LocalProvider) Put(_ context.Context, key, value string) error {
 	return writeFileAtomic(p.secretPath(key), buf.Bytes(), localFileMode)
 }
 
+// Delete removes the .age file backing key. Returns ErrKeyNotFound if
+// no such file exists so callers can tell "you asked to delete
+// something that wasn't there" apart from a real I/O failure.
+func (p *LocalProvider) Delete(_ context.Context, key string) error {
+	if err := validateSecretKey(key); err != nil {
+		return err
+	}
+	path := p.secretPath(key)
+	if err := os.Remove(path); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("%w: vault %q key %q", ErrKeyNotFound, p.name, key)
+		}
+		return fmt.Errorf("delete secret %q in vault %q: %w", key, p.name, err)
+	}
+	return nil
+}
+
 // List returns the secret keys stored in this vault, sorted
 // alphabetically. Files without the .age suffix are skipped — kvlt
 // never wrote them, so they're stray and should not be advertised

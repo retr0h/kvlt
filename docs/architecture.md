@@ -10,7 +10,7 @@ next to the code; this file is the conceptual map.
 The vault system is built around a **named-vault** architecture where:
 
 - **Named vaults**: Each vault instance has a user-defined name configured in
-  `vaults/{vault-type}/{id}.yaml`.
+  `.kvlt/vaults/{vault-type}/{id}.yaml`.
 - **Vault types**: The underlying storage system (`local_encryption`, plus
   optional `sops`, `aws-sm`, `azure-kv`, `1password`, `hashicorp-vault` behind
   build tags) is specified per vault. The CLI accepts `local` as a typo-friendly
@@ -29,23 +29,25 @@ AWS Secrets Manager tomorrow.
 
 ## Secret Storage
 
-Vault configurations are tracked in git under `vaults/`, organized by type:
+Everything kvlt-related lives under a single `.kvlt/` tree at the repository
+root, so `rm -rf .kvlt` truly resets state:
 
 ```
-vaults/
-  {vault-type}/
-    {vault-id}.yaml             # vault configuration (tracked in git)
+.kvlt/
+  vaults/
+    {vault-type}/
+      {vault-id}.yaml           # vault configuration (safe to commit)
+  secrets/
+    {vault-type}/
+      {vault-name}/
+        {secret-key}.age        # age-encrypted blobs (one per secret)
 ```
 
-Encrypted local secrets live under the runtime datastore directory (default
-`.kvlt/secrets/`), organized by type and name:
-
-```
-.kvlt/secrets/
-  local_encryption/
-    {vault-name}/
-      {secret-key}.age          # age-encrypted blobs (one per secret)
-```
+Vault configs (`.kvlt/vaults/`) are safe to commit: they hold recipient public
+keys, not private material. Encrypted payloads (`.kvlt/secrets/`) are gitignored
+by default — they're encrypted, so an attacker reading a checked-in blob still
+needs a recipient SSH private key to do anything with it, but the default keeps
+deployment-specific state out of the tracked tree.
 
 There is **no key file on disk**. Decryption uses the user's SSH private key
 (typically in `~/.ssh/`, optionally protected by a passphrase, optionally cached
@@ -53,11 +55,8 @@ in ssh-agent). kvlt never writes a master key — that's age's role, and the
 recipient/identity model keeps the secret material in the user's existing
 protection chain.
 
-The `.kvlt/` directory is `.gitignore`d at project init for safety, though the
-contents are encrypted: an attacker reading a checked-in `.age` blob still needs
-one of the recipient SSH private keys to do anything with it. Cloud-backend
-vaults store nothing under `.kvlt/secrets/` — secrets live in the upstream
-service.
+Cloud-backend vaults store nothing under `.kvlt/secrets/` — secrets live in the
+upstream service.
 
 ## Provider Interface
 
@@ -78,6 +77,11 @@ type Provider interface {
     // never returned, even in debug logs.
     List(ctx context.Context) ([]string, error)
 
+    // Delete removes a secret by key. Returns ErrKeyNotFound when the
+    // key isn't present so callers can distinguish a no-op from an I/O
+    // error.
+    Delete(ctx context.Context, key string) error
+
     // Name returns the vault's user-defined name (not the backend type).
     // Used in error messages and audit lines.
     Name() string
@@ -93,7 +97,7 @@ methods is the contract; everything else is layered on top.
 Each named vault is described by a YAML file:
 
 ```yaml
-# vaults/local_encryption/8f4e2d1c9a3b4c5dae7f0a1b2c3d4e5f.yaml
+# .kvlt/vaults/local_encryption/8f4e2d1c9a3b4c5dae7f0a1b2c3d4e5f.yaml
 id: 8f4e2d1c9a3b4c5dae7f0a1b2c3d4e5f
 name: dev
 type: local_encryption
@@ -106,7 +110,7 @@ settings:
 ```
 
 ```yaml
-# vaults/aws-sm/2b6c1f0e-7d8a-4e3b-9f2c-0a1b2c3d4e5f.yaml
+# .kvlt/vaults/aws-sm/2b6c1f0e-7d8a-4e3b-9f2c-0a1b2c3d4e5f.yaml
 id: 2b6c1f0e-7d8a-4e3b-9f2c-0a1b2c3d4e5f
 name: prod
 type: aws-sm

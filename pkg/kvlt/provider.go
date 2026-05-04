@@ -52,6 +52,11 @@ type Provider interface {
 	// are never returned, even in debug logs.
 	List(ctx context.Context) ([]string, error)
 
+	// Delete removes a secret by key. Returns ErrKeyNotFound when the
+	// key isn't present so callers can distinguish a no-op from an
+	// I/O error; the local backend deletes the underlying .age file.
+	Delete(ctx context.Context, key string) error
+
 	// Name returns the vault's user-defined name (not the backend
 	// type). Used in error messages and audit lines.
 	Name() string

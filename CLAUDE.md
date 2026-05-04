@@ -64,7 +64,7 @@ adapter — never duplicate logic from the package into commands.
   Each backend self-registers in its own file's `init()` via
   `kvlt.RegisterBackend(typeID, factory)`.
 - **Named vaults, not backend types** — every CLI verb takes a vault name; the
-  name resolves to a backend via `vaults/<type>/<id>.yaml`.
+  name resolves to a backend via `.kvlt/vaults/<type>/<id>.yaml`.
 - **Recipients in config, identities at the edge** — vault YAML lists recipient
   public keys (auditable, git-trackable). Identities (private keys) are never
   in config; they come from the user's SSH key + ssh-agent + passphrase prompt.
@@ -87,14 +87,22 @@ go run . version                # quick sanity check
 # Bootstrap a local vault (encrypts to ~/.ssh/id_ed25519.pub by default)
 kvlt vault create --name dev
 
-# Store / retrieve
+# Store / retrieve / delete
 kvlt secret put --vault dev --key API_KEY --value sk-1234
 echo "$TOKEN" | kvlt secret put --vault dev --key TOKEN  # stdin keeps it out of shell history
 kvlt secret get --vault dev --key API_KEY
 kvlt secret list --vault dev
+kvlt secret delete --vault dev --key API_KEY             # --force to skip the [y/N] prompt
+
+# Bulk-import a dotenv file or store a whole file as one secret
+kvlt secret import --vault dev --env ~/.env
+kvlt secret import --vault dev --file ~/.kube/config --key kubeconfig
 
 # Override the SSH key used for decrypt (or set KVLT_PRIVATE_KEY)
 kvlt secret get --vault dev --key API_KEY -i ~/work/id_ed25519
+
+# Tear down a whole vault (config + every secret)
+kvlt vault delete --name dev                             # --force to skip the [y/N] prompt
 
 # Move backends without changing references (planned)
 kvlt vault migrate --name dev --to-type aws-sm

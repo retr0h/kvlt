@@ -27,6 +27,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 var (
@@ -87,12 +88,17 @@ func runSecretGet(_ *cobra.Command, _ []string) error {
 			"value": value,
 		})
 	}
-	// Raw bytes, no newline. Pipe-friendly by design — adding a
-	// newline would break common patterns like X="$(kvlt secret
-	// get …)" where bash strips one trailing newline already;
-	// further trimming is the caller's job if they want it.
+	// Bytes verbatim, with a single trailing newline added only when
+	// stdout is a TTY. The interactive case wants the newline so the
+	// shell prompt doesn't sit next to the value (`safe%`); pipes
+	// and redirects want bytes-as-stored so file round-trip stays
+	// byte-perfect (`kvlt secret get --key kubeconfig > ~/.kube/config`
+	// reproduces the original file exactly).
 	if _, err := os.Stdout.WriteString(value); err != nil {
 		return fmt.Errorf("write secret to stdout: %w", err)
+	}
+	if term.IsTerminal(int(os.Stdout.Fd())) {
+		_, _ = os.Stdout.WriteString("\n")
 	}
 	return nil
 }
