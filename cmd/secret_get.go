@@ -1,0 +1,95 @@
+// Copyright (c) 2026 John Dewey
+
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to
+// deal in the Software without restriction, including without limitation the
+// rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+// sell copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+
+// The above copyright notice and this permission notice shall be included in
+// all copies or substantial portions of the Software.
+
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+// FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+// DEALINGS IN THE SOFTWARE.
+
+package cmd
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+
+	"github.com/spf13/cobra"
+)
+
+var (
+	secretGetVault string
+	secretGetKey   string
+	secretGetJSON  bool
+)
+
+// secretGetCmd retrieves a secret. Output is **raw bytes on stdout,
+// no trailing newline, no decoration** so it composes with Unix
+// pipes:
+//
+//	export AWS_KEY="$(kvlt secret get --vault dev --key AWS_KEY)"
+//	kvlt secret get --vault dev --key DEPLOY_KEY | ssh-add -
+//
+// --json swaps in {vault, key, value} for scripts that want
+// metadata.
+var secretGetCmd = &cobra.Command{
+	Use:   "get",
+	Short: "Decrypt and print a secret value",
+	Args:  cobra.NoArgs,
+	RunE:  runSecretGet,
+}
+
+func init() {
+	secretGetCmd.Flags().StringVarP(&secretGetVault, "vault", "v", "",
+		"vault to read from (required)")
+	secretGetCmd.Flags().StringVarP(&secretGetKey, "key", "k", "",
+		"secret key to retrieve (required)")
+	secretGetCmd.Flags().BoolVar(&secretGetJSON, "json", false,
+		"emit {vault, key, value} JSON instead of the raw secret")
+	_ = secretGetCmd.MarkFlagRequired("vault")
+	_ = secretGetCmd.MarkFlagRequired("key")
+	secretCmd.AddCommand(secretGetCmd)
+}
+
+func runSecretGet(_ *cobra.Command, _ []string) error {
+	store, err := newStore()
+	if err != nil {
+		return err
+	}
+	provider, err := store.Open(secretGetVault)
+	if err != nil {
+		return mapGetError(err)
+	}
+	value, err := provider.Get(context.Background(), secretGetKey)
+	if err != nil {
+		return mapGetError(err)
+	}
+
+	if secretGetJSON {
+		return json.NewEncoder(os.Stdout).Encode(map[string]string{
+			"vault": secretGetVault,
+			"key":   secretGetKey,
+			"value": value,
+		})
+	}
+	// Raw bytes, no newline. Pipe-friendly by design — adding a
+	// newline would break common patterns like X="$(kvlt secret
+	// get …)" where bash strips one trailing newline already;
+	// further trimming is the caller's job if they want it.
+	if _, err := os.Stdout.WriteString(value); err != nil {
+		return fmt.Errorf("write secret to stdout: %w", err)
+	}
+	return nil
+}

@@ -45,21 +45,16 @@ var (
 
 var rootCmd = &cobra.Command{
 	Use:   "kvlt",
-	Short: "Pluggable secrets vault — local AES-GCM by default, cloud backends optional",
+	Short: "Pluggable secrets vault — age + SSH keys by default, cloud backends optional",
 	Long: `
 █▄▀ █░█ █░░ ▀█▀
 █░█ ▀▄▀ █▄▄ ░█░
 
 kvlt is a small, dependency-light secrets vault. The default backend
-stores secrets locally with AES-GCM. Pluggable backends (AWS Secrets
-Manager, Azure Key Vault, 1Password, HashiCorp Vault) can be opted in
-without touching caller code — vaults are referenced by name, not by
-backend type.
-
-  kvlt vault create local-encryption dev
-  kvlt put dev API_KEY=hunter2
-  kvlt get dev API_KEY
-  kvlt list-keys dev`,
+encrypts with age using your existing SSH keys; pluggable backends
+(SOPS, AWS Secrets Manager, Azure Key Vault, 1Password, HashiCorp
+Vault) can be opted in via build tags without touching caller code —
+vaults are referenced by name, not by backend type.`,
 	RunE: func(c *cobra.Command, _ []string) error {
 		return c.Help()
 	},

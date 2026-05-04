@@ -20,15 +20,22 @@
 
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"github.com/spf13/viper"
 
-// vaultCmd is the parent for vault lifecycle subcommands — leaves
-// live in cmd/vault_*.go (create, list, info). Per-secret
-// operations live under secretCmd; cross-cutting workflow verbs
-// (env, run) sit at the top level for ergonomic muscle memory.
-var vaultCmd = &cobra.Command{
-	Use:   "vault",
-	Short: "Create, inspect, and list vaults",
+	"github.com/retr0h/kvlt/internal/cli"
+	"github.com/retr0h/kvlt/pkg/kvlt"
+)
+
+// newStore builds the public-API Store every CLI verb operates
+// against, wiring in the TTY-backed passphrase prompt as the
+// IdentityResolver. Centralized here so every verb uses the same
+// identity-discovery rules — and so the rules live behind the
+// public IdentityResolver / DefaultIdentityResolver surface,
+// proving external Go callers can use the same construction kvlt's
+// own CLI does.
+func newStore() (*kvlt.Store, error) {
+	repo := viper.GetString("repo.path")
+	resolver := kvlt.DefaultIdentityResolver(cli.PassphrasePromptTTY)
+	return kvlt.NewStore(repo, resolver)
 }
-
-func init() { rootCmd.AddCommand(vaultCmd) }

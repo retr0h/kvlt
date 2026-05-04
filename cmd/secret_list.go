@@ -29,39 +29,41 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// listKeysCmd prints every secret key currently stored in a vault.
-// Values are NEVER returned — that's a vault-wide invariant inside
-// pkg/kvlt and the CLI inherits it. List works without unlocking
-// the vault (no IdentityResolver is consulted), so an audit "what's
-// in here?" doesn't need to pop a passphrase prompt.
+var (
+	secretListVault string
+	secretListJSON  bool
+)
+
+// secretListCmd prints every secret key currently stored in a
+// vault. Values are NEVER returned — that's a vault-wide invariant
+// inside pkg/kvlt and the CLI inherits it. List works without
+// unlocking the vault (no IdentityResolver consulted) so an audit
+// "what's in here?" doesn't need to pop a passphrase prompt.
 //
 // Default output is one key per line — pipe-friendly with `wc -l`,
-// `grep`, `xargs`, etc. --json swaps in {"vault","keys":[...]}
-// for scripting.
-var listKeysCmd = &cobra.Command{
-	Use:     "list-keys <vault>",
-	Aliases: []string{"keys", "ls-keys"},
-	Short:   "List the secret keys stored in a vault (no values)",
-	Args:    cobra.ExactArgs(1),
-	RunE:    runListKeys,
+// `grep`, `xargs`. --json swaps in {"vault","keys":[…]} for scripts.
+var secretListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List the secret keys stored in a vault (names only, never values)",
+	Args:  cobra.NoArgs,
+	RunE:  runSecretList,
 }
-
-var listKeysJSON bool
 
 func init() {
-	listKeysCmd.Flags().BoolVar(&listKeysJSON, "json", false,
+	secretListCmd.Flags().StringVarP(&secretListVault, "vault", "v", "",
+		"vault to list (required)")
+	secretListCmd.Flags().BoolVar(&secretListJSON, "json", false,
 		"emit {vault, keys} JSON instead of one key per line")
-	rootCmd.AddCommand(listKeysCmd)
+	_ = secretListCmd.MarkFlagRequired("vault")
+	secretCmd.AddCommand(secretListCmd)
 }
 
-func runListKeys(_ *cobra.Command, args []string) error {
-	vaultName := args[0]
-
+func runSecretList(_ *cobra.Command, _ []string) error {
 	store, err := newStore()
 	if err != nil {
 		return err
 	}
-	provider, err := store.Open(vaultName)
+	provider, err := store.Open(secretListVault)
 	if err != nil {
 		return mapGetError(err)
 	}
@@ -70,9 +72,9 @@ func runListKeys(_ *cobra.Command, args []string) error {
 		return err
 	}
 
-	if listKeysJSON {
+	if secretListJSON {
 		return json.NewEncoder(os.Stdout).Encode(map[string]any{
-			"vault": vaultName,
+			"vault": secretListVault,
 			"keys":  keys,
 		})
 	}

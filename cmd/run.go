@@ -39,30 +39,30 @@ import (
 // Argument parsing requires the `--` separator before the command,
 // so flags consumed by kvlt don't accidentally bind to the child:
 //
-//	kvlt run dev -- npm start
-//	kvlt run dev --only A,B -- python deploy.py
-//	kvlt run dev -- bash -c 'echo $API_KEY'
+//	kvlt run --vault dev -- npm start
+//	kvlt run --vault dev --only A,B -- python deploy.py
+//	kvlt run --vault dev -- bash -c 'echo $API_KEY'
 var runCmd = &cobra.Command{
-	Use:   "run <vault> [--only K1,K2] -- <cmd> [args…]",
+	Use:   "run --vault <name> [--only K1,K2] -- <cmd> [args…]",
 	Short: "Inject vault secrets as env vars into a child process",
-	Long: `Decrypt every secret in <vault> and exec <cmd> with those
+	Long: `Decrypt every secret in --vault and exec <cmd> with those
 secrets in its environment. The parent shell is unaffected.
 
 Same model as aws-vault exec / op run — best for one-off commands
 where the secrets should not persist after the command exits:
 
-  kvlt run dev -- npm start
-  kvlt run dev -- python manage.py migrate
-  kvlt run dev -- bash -c 'curl -H "Authorization: Bearer $API_TOKEN" …'`,
+  kvlt run --vault dev -- npm start
+  kvlt run --vault dev -- python manage.py migrate
+  kvlt run --vault dev -- bash -c 'curl -H "Authorization: Bearer $API_TOKEN" …'`,
 	Args: func(cmd *cobra.Command, args []string) error {
 		// Cobra's ArgsLenAtDash returns the index where `--` appears
-		// in the original argv, or -1 if no `--`. Require at least
-		// vault and a command after the dash.
+		// in the original argv, or -1 if no `--`. With everything as
+		// flags, no positional args precede `--`, so we just require
+		// at least one token after the dash.
 		if cmd.ArgsLenAtDash() == -1 {
-			return errors.New("missing `--` separator before the command (e.g. `kvlt run dev -- ls`)")
-		}
-		if cmd.ArgsLenAtDash() < 1 {
-			return errors.New("missing vault name before `--`")
+			return errors.New(
+				"missing `--` separator before the command (e.g. `kvlt run --vault dev -- ls`)",
+			)
 		}
 		if len(args) <= cmd.ArgsLenAtDash() {
 			return errors.New("missing command after `--`")
@@ -72,17 +72,22 @@ where the secrets should not persist after the command exits:
 	RunE: runRun,
 }
 
-var runOnlyKeys []string
+var (
+	runVault    string
+	runOnlyKeys []string
+)
 
 func init() {
+	runCmd.Flags().StringVarP(&runVault, "vault", "v", "",
+		"vault whose secrets to inject (required)")
 	runCmd.Flags().StringSliceVar(&runOnlyKeys, "only", nil,
 		"comma-separated list of keys to inject (default: all)")
+	_ = runCmd.MarkFlagRequired("vault")
 	rootCmd.AddCommand(runCmd)
 }
 
 func runRun(cmd *cobra.Command, args []string) error {
 	dash := cmd.ArgsLenAtDash()
-	vaultName := args[0]
 	childArgv := args[dash:]
 
 	ctx := context.Background()
@@ -90,7 +95,7 @@ func runRun(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	provider, err := store.Open(vaultName)
+	provider, err := store.Open(runVault)
 	if err != nil {
 		return mapGetError(err)
 	}
@@ -122,7 +127,9 @@ func runRun(cmd *cobra.Command, args []string) error {
 	// programs all behave as if invoked directly. We propagate the
 	// child's exit status so shell pipelines (`kvlt run … && deploy`)
 	// branch correctly.
-	child := exec.Command(childArgv[0], childArgv[1:]...) //nolint:gosec // user explicitly chose this command
+	child := exec.Command(
+		childArgv[0],
+		childArgv[1:]...) //nolint:gosec // user explicitly chose this command
 	child.Env = childEnv
 	child.Stdin = os.Stdin
 	child.Stdout = os.Stdout

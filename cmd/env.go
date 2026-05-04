@@ -40,47 +40,50 @@ import (
 // interpret $-substitutions inside the secret, which would be a
 // silent corruption surface for any value containing dollar signs.
 var envCmd = &cobra.Command{
-	Use:   "env <vault>",
+	Use:   "env",
 	Short: "Print all secrets as `export KEY=VALUE` lines for shell `eval`",
-	Long: `Decrypt every secret in <vault> and print export statements
-suitable for `+"`eval`"+`. Quoting is POSIX single-quote so values
+	Long: `Decrypt every secret in --vault and print export statements
+suitable for ` + "`eval`" + `. Quoting is POSIX single-quote so values
 containing $, backticks, spaces, or special chars survive intact.
 
 Use cases:
   # .envrc — committed to git, no plaintext secrets
-  eval "$(kvlt env dev)"
+  eval "$(kvlt env --vault dev)"
 
   # Restrict to specific keys
-  eval "$(kvlt env dev --only API_KEY,DB_PASSWORD)"
+  eval "$(kvlt env --vault dev --only API_KEY,DB_PASSWORD)"
 
   # Add a prefix to every exported var
-  eval "$(kvlt env dev --prefix MY_APP_)"`,
-	Args: cobra.ExactArgs(1),
+  eval "$(kvlt env --vault dev --prefix MY_APP_)"`,
+	Args: cobra.NoArgs,
 	RunE: runEnv,
 }
 
 var (
+	envVault    string
 	envOnlyKeys []string
 	envPrefix   string
 )
 
 func init() {
+	envCmd.Flags().StringVarP(&envVault, "vault", "v", "",
+		"vault to source secrets from (required)")
 	envCmd.Flags().StringSliceVar(&envOnlyKeys, "only", nil,
 		"comma-separated list of keys to export (default: all)")
 	envCmd.Flags().StringVar(&envPrefix, "prefix", "",
 		"prefix prepended to every exported variable name")
+	_ = envCmd.MarkFlagRequired("vault")
 	rootCmd.AddCommand(envCmd)
 }
 
-func runEnv(_ *cobra.Command, args []string) error {
-	vaultName := args[0]
+func runEnv(_ *cobra.Command, _ []string) error {
 	ctx := context.Background()
 
 	store, err := newStore()
 	if err != nil {
 		return err
 	}
-	provider, err := store.Open(vaultName)
+	provider, err := store.Open(envVault)
 	if err != nil {
 		return mapGetError(err)
 	}
@@ -124,7 +127,7 @@ func filterKeys(available, wanted []string) []string {
 
 // shellQuote wraps s in POSIX single-quotes, doubling any embedded
 // single-quote so the eval'd form reproduces the original byte
-// sequence exactly. The escape pattern `'\''` is the standard idiom:
+// sequence exactly. The escape pattern `'\”` is the standard idiom:
 // close the single-quoted span, emit a literal single-quote with
 // backslash, reopen the single-quoted span.
 //
@@ -135,4 +138,3 @@ func filterKeys(available, wanted []string) []string {
 func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
-

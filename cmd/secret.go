@@ -22,13 +22,14 @@ package cmd
 
 import "github.com/spf13/cobra"
 
-// vaultCmd is the parent for vault lifecycle subcommands — leaves
-// live in cmd/vault_*.go (create, list, info). Per-secret
-// operations live under secretCmd; cross-cutting workflow verbs
-// (env, run) sit at the top level for ergonomic muscle memory.
-var vaultCmd = &cobra.Command{
-	Use:   "vault",
-	Short: "Create, inspect, and list vaults",
+// secretCmd is the parent for per-secret operations — leaves live
+// in cmd/secret_*.go (put, get, list). Cross-cutting workflow verbs
+// (env, run) stay at the top level because they operate on whole
+// vaults and are typed often enough that nesting them would be
+// friction.
+var secretCmd = &cobra.Command{
+	Use:   "secret",
+	Short: "Store, retrieve, and list secrets in a vault",
 }
 
-func init() { rootCmd.AddCommand(vaultCmd) }
+func init() { rootCmd.AddCommand(secretCmd) }

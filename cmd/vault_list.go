@@ -20,15 +20,44 @@
 
 package cmd
 
-import "github.com/spf13/cobra"
+import (
+	"fmt"
+	"os"
 
-// vaultCmd is the parent for vault lifecycle subcommands — leaves
-// live in cmd/vault_*.go (create, list, info). Per-secret
-// operations live under secretCmd; cross-cutting workflow verbs
-// (env, run) sit at the top level for ergonomic muscle memory.
-var vaultCmd = &cobra.Command{
-	Use:   "vault",
-	Short: "Create, inspect, and list vaults",
+	"github.com/spf13/cobra"
+)
+
+// vaultListCmd prints every configured vault in the repository.
+// One line per vault: name, type, recipient count. The id and full
+// recipient list belong in `vault info <name>`, where the operator
+// has explicitly asked.
+var vaultListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all vaults in the repository",
+	RunE:  runVaultList,
 }
 
-func init() { rootCmd.AddCommand(vaultCmd) }
+func init() { vaultCmd.AddCommand(vaultListCmd) }
+
+func runVaultList(_ *cobra.Command, _ []string) error {
+	store, err := newStore()
+	if err != nil {
+		return err
+	}
+	configs, err := store.List()
+	if err != nil {
+		return err
+	}
+	if len(configs) == 0 {
+		fmt.Fprintln(os.Stderr, "no vaults configured — run `kvlt vault create local <name>`")
+		return nil
+	}
+	for _, c := range configs {
+		recCount := 0
+		if rs, ok := c.Settings["recipients"].([]any); ok {
+			recCount = len(rs)
+		}
+		fmt.Printf("%-20s  %-20s  %d recipient(s)\n", c.Name, c.Type, recCount)
+	}
+	return nil
+}
