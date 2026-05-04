@@ -91,21 +91,11 @@ func runVaultCreate(_ *cobra.Command, _ []string) error {
 		return err
 	}
 
-	// Human success line — themed; the structured slog line below is
-	// for machine consumers (logging pipelines, CI). Two channels, one
-	// event.
 	out := os.Stdout
 	_, _ = fmt.Fprintln(out, cli.Success(out, fmt.Sprintf("vault %s created (%s, %d recipient(s))",
 		cli.Accent(out, cfg.Name),
 		cli.Mute(out, cfg.Type),
 		len(recipients))))
-
-	logger.Info("vault created",
-		"name", cfg.Name,
-		"type", cfg.Type,
-		"id", cfg.ID,
-		"recipients", len(recipients),
-	)
 	return nil
 }
 

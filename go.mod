@@ -5,7 +5,6 @@ go 1.25.0
 require (
 	filippo.io/age v1.3.1
 	github.com/caarlos0/go-version v0.2.2
-	github.com/lmittmann/tint v1.0.5
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.20.0
 	golang.org/x/crypto v0.50.0
