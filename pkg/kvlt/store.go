@@ -98,8 +98,11 @@ func (s *Store) Create(name, vaultType string, recipientStrings []string) (*Conf
 	if err := validateVaultName(name); err != nil {
 		return nil, err
 	}
-	if vaultType != TypeLocalEncryption {
-		return nil, fmt.Errorf("%w: unknown vault type %q", ErrInvalidConfig, vaultType)
+	if !IsBackendRegistered(vaultType) {
+		return nil, fmt.Errorf(
+			"%w: unknown vault type %q — registered types: %v",
+			ErrInvalidConfig, vaultType, RegisteredBackends(),
+		)
 	}
 	if len(recipientStrings) == 0 {
 		return nil, fmt.Errorf("%w: at least one recipient is required", ErrInvalidConfig)
@@ -155,6 +158,11 @@ func stringsToAny(s []string) []any {
 // ErrVaultNotFound if no vault by that name exists. The provider's
 // IdentityResolver is the one the Store was constructed with — pass
 // a non-nil resolver to NewStore if Get is meant to work.
+//
+// Dispatch goes through the backend registry, so a vault config
+// pointing at a type registered behind a build tag (e.g. `sops`,
+// `aws-sm`) opens fine if the binary includes that backend, and
+// returns a clear ErrInvalidConfig if it doesn't.
 func (s *Store) Open(name string) (Provider, error) {
 	cfg, err := s.findConfigByName(name)
 	if err != nil {
@@ -163,13 +171,7 @@ func (s *Store) Open(name string) (Provider, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: %q", ErrVaultNotFound, name)
 	}
-
-	switch cfg.Type {
-	case TypeLocalEncryption:
-		return s.openLocal(cfg)
-	default:
-		return nil, fmt.Errorf("%w: unknown vault type %q in config", ErrInvalidConfig, cfg.Type)
-	}
+	return newProviderFromConfig(s.repoPath, cfg, s.identities)
 }
 
 // List returns every vault config in the repository, sorted by name.
@@ -224,31 +226,6 @@ func (s *Store) findConfigByName(name string) (*Config, error) {
 		}
 	}
 	return nil, nil
-}
-
-// openLocal materializes a LocalProvider from a config plus the
-// Store's IdentityResolver. The vault directory under
-// .kvlt/secrets/{type}/{name}/ is created lazily by NewLocalProvider.
-func (s *Store) openLocal(cfg *Config) (*LocalProvider, error) {
-	recList, _ := cfg.Settings["recipients"].([]any)
-	if len(recList) == 0 {
-		return nil, fmt.Errorf("%w: vault %q has no recipients in config", ErrInvalidConfig, cfg.Name)
-	}
-	recipients := make([]age.Recipient, 0, len(recList))
-	for _, raw := range recList {
-		s, ok := raw.(string)
-		if !ok {
-			return nil, fmt.Errorf("%w: vault %q has a non-string recipient entry", ErrInvalidConfig, cfg.Name)
-		}
-		r, err := parseRecipientString(s)
-		if err != nil {
-			return nil, fmt.Errorf("%w: vault %q recipient %q: %w", ErrInvalidConfig, cfg.Name, s, err)
-		}
-		recipients = append(recipients, r)
-	}
-
-	dir := filepath.Join(s.repoPath, ".kvlt", "secrets", cfg.Type, cfg.Name)
-	return NewLocalProvider(cfg.Name, dir, recipients, s.identities)
 }
 
 // writeConfig serializes cfg to {repoPath}/vaults/{type}/{id}.yaml

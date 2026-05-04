@@ -35,6 +35,45 @@ import (
 	"filippo.io/age"
 )
 
+// init registers the local-encryption backend with the factory
+// registry. Done in init() so the base binary always has it
+// available — `local` is the default backend, never gated by build
+// tags. Cloud backends in their own files do the same under
+// //go:build <tag> guards so they're only present when the operator
+// asked for them.
+func init() {
+	RegisterBackend(TypeLocalEncryption, newLocalProviderFromConfig)
+}
+
+// newLocalProviderFromConfig adapts a stored Config into a
+// LocalProvider. Recipients are read from cfg.Settings["recipients"]
+// (stored by Store.Create as the canonical strings the user passed
+// in) and parsed back into age.Recipients via parseRecipientString.
+// The on-disk vault directory under .kvlt/secrets/{type}/{name}/ is
+// derived from the repo root + config — keeping path computation in
+// one place so a future migrate command can compute paths the same
+// way.
+func newLocalProviderFromConfig(repoPath string, cfg *Config, identities IdentityResolver) (Provider, error) {
+	recList, _ := cfg.Settings["recipients"].([]any)
+	if len(recList) == 0 {
+		return nil, fmt.Errorf("%w: vault %q has no recipients in config", ErrInvalidConfig, cfg.Name)
+	}
+	recipients := make([]age.Recipient, 0, len(recList))
+	for _, raw := range recList {
+		s, ok := raw.(string)
+		if !ok {
+			return nil, fmt.Errorf("%w: vault %q has a non-string recipient entry", ErrInvalidConfig, cfg.Name)
+		}
+		r, err := parseRecipientString(s)
+		if err != nil {
+			return nil, fmt.Errorf("%w: vault %q recipient %q: %w", ErrInvalidConfig, cfg.Name, s, err)
+		}
+		recipients = append(recipients, r)
+	}
+	dir := filepath.Join(repoPath, ".kvlt", "secrets", cfg.Type, cfg.Name)
+	return NewLocalProvider(cfg.Name, dir, recipients, identities)
+}
+
 const (
 	// localSecretSuffix is appended to every secret's filename. The
 	// .age extension matches what `age` itself uses, so the file
