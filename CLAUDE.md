@@ -7,10 +7,13 @@ code in this repository.
 
 kvlt is a small, dependency-light secrets vault written in Go. It ships
 as a single binary with no daemon — every command opens the vault, talks
-to the backend, and exits. The default backend encrypts secrets locally
-with AES-GCM and has no third-party runtime deps. Cloud backends (AWS
-Secrets Manager, Azure Key Vault, 1Password, HashiCorp Vault) sit behind
-build tags so consumers who don't need them never pay the SDK cost.
+to the backend, and exits. The default backend encrypts with
+[age](https://github.com/FiloSottile/age) using the user's existing SSH
+keys (`~/.ssh/id_ed25519`); the protection chain is the SSH protection
+chain (passphrase + ssh-agent + Touch ID via secretive on macOS) — kvlt
+doesn't reinvent the lock. Cloud backends (SOPS, AWS Secrets Manager,
+Azure Key Vault, 1Password, HashiCorp Vault) sit behind build tags so
+consumers who don't need them never pay the SDK cost.
 
 The named-vault design is borrowed from [swamp](https://github.com/systeminit/swamp)'s
 vault subsystem: callers reference vaults by user-defined name, never by
@@ -52,14 +55,20 @@ adapter — never duplicate logic from the package into commands.
 
 ## Key Technical Details
 
-- **Zero runtime dependencies** for the local backend — only stdlib `crypto/aes`
-  and `crypto/cipher`. Pure Go; CGO is off in goreleaser.
+- **Encryption is age** — we don't write crypto. `filippo.io/age` (pure Go,
+  audited, by Filippo Valsorda) handles the cipher, the file format, and SSH
+  key parsing. Pure Go; CGO is off in goreleaser.
 - **Cross-platform** — darwin/linux/windows × amd64/arm64 in the release
   matrix. No platform-specific syscalls in the core.
-- **Backends behind build tags** — `aws`, `azure`, `onepass`, `hcv`. The base
-  binary stays small; cloud variants are separate goreleaser builds.
+- **Backends behind build tags** — `sops`, `aws`, `azure`, `onepass`, `hcv`. The
+  base binary stays small; cloud variants are separate goreleaser builds.
+  Each backend self-registers in its own file's `init()` via
+  `kvlt.RegisterBackend(typeID, factory)`.
 - **Named vaults, not backend types** — every CLI verb takes a vault name; the
   name resolves to a backend via `vaults/<type>/<id>.yaml`.
+- **Recipients in config, identities at the edge** — vault YAML lists recipient
+  public keys (auditable, git-trackable). Identities (private keys) are never
+  in config; they come from the user's SSH key + ssh-agent + passphrase prompt.
 - **`migrate` is copy-then-swap, never move** — source vault keeps its secrets
   until config is deleted, so a partial failure leaves the original intact.
 - **Secret values never logged**, even at `--debug`. List operations return
@@ -68,7 +77,8 @@ adapter — never duplicate logic from the package into commands.
 ## Building
 
 ```bash
-go build -o kvlt .              # base binary (local_encryption only)
+go build -o kvlt .              # base binary (local age backend only)
+go build -tags sops -o kvlt .   # base + SOPS backend
 go build -tags aws -o kvlt .    # base + AWS Secrets Manager backend
 go run . version                # quick sanity check
 ```
@@ -76,24 +86,32 @@ go run . version                # quick sanity check
 ## Usage
 
 ```bash
-# Bootstrap a local vault
-kvlt vault create local-encryption dev
+# Bootstrap a local vault (encrypts to ~/.ssh/id_ed25519.pub by default)
+kvlt vault create --name dev
 
 # Store / retrieve
-kvlt put dev API_KEY=sk-1234
-echo "$TOKEN" | kvlt put dev TOKEN     # stdin keeps it out of shell history
-kvlt get dev API_KEY
-kvlt list-keys dev
+kvlt secret put --vault dev --key API_KEY --value sk-1234
+echo "$TOKEN" | kvlt secret put --vault dev --key TOKEN  # stdin keeps it out of shell history
+kvlt secret get --vault dev --key API_KEY
+kvlt secret list --vault dev
 
-# Move backends without changing references
-kvlt vault migrate dev --to-type aws-sm
+# Override the SSH key used for decrypt (or set KVLT_PRIVATE_KEY)
+kvlt secret get --vault dev --key API_KEY -i ~/work/id_ed25519
+
+# Move backends without changing references (planned)
+kvlt vault migrate --name dev --to-type aws-sm
 ```
 
 ## Code Standards
 
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) for
   commit messages
-- Use `testify/suite` with table-driven tests
+- **One `Test<FunctionName>` per public function**, with a table-driven body
+  whose cases cover every relevant scenario. Do not scatter one-off
+  `Test<Func>_<scenario>` functions — fold them into the table for the
+  function under test. See [docs/development.md](docs/development.md#test-conventions)
+  for the full convention (case naming, parallelism rules, sentinel-error
+  assertions, no `age` mocking).
 - Multi-line function signatures
 - All `.go` files include the MIT copyright header at the top of the file
 - golangci-lint with: errcheck, errname, govet, prealloc, predeclared, revive,
@@ -123,9 +141,13 @@ After completing work, run these checks:
 
 ## Roadmap
 
-- [ ] `local_encryption` backend (AES-GCM)
-- [ ] `vault create` / `put` / `get` / `list-keys` CLI verbs
+- [x] `local` backend (age + SSH-key recipients)
+- [x] `vault create` / `put` / `get` / `list-keys` CLI verbs
+- [x] `kvlt env` / `kvlt run` for shell + child-process integration
+- [x] Pluggable backend registry
+- [ ] ssh-agent identity integration (file-based passphrase prompt works today)
 - [ ] `kvlt vault migrate` (copy-then-swap-config)
+- [ ] SOPS backend (`-tags sops`)
 - [ ] AWS Secrets Manager backend (`-tags aws`)
 - [ ] Azure Key Vault backend (`-tags azure`)
 - [ ] 1Password backend via `op` CLI (`-tags onepass`)

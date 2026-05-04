@@ -16,8 +16,8 @@ First off, thanks for taking the time to contribute!
 
 - Open an issue describing the feature you'd like to see
 - Explain why this feature would be useful
-- Consider whether it fits the project's scope (a small, pluggable secrets
-  vault — not a full secret-management platform)
+- Consider whether it fits the project's scope (a small, pluggable secrets vault
+  — not a full secret-management platform)
 
 ### Code Contributions
 
@@ -80,8 +80,8 @@ just go::unit    # unit tests only
 
 - Follow existing patterns in the codebase
 - Multi-line function signatures
-- Backend implementations live under `internal/kvlt/backend_*.go`, behind
-  build tags when they pull in cloud-vendor SDKs — the base binary stays
+- Backend implementations live under `internal/kvlt/backend_*.go`, behind build
+  tags when they pull in cloud-vendor SDKs — the base binary stays
   dependency-light
-- Errors should name the vault and key (when safe to expose) so an operator
-  can act without diffing logs
+- Errors should name the vault and key (when safe to expose) so an operator can
+  act without diffing logs
