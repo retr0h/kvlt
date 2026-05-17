@@ -26,8 +26,7 @@ jobs:
         run: just test
       - name: Coverage
         run: go test -race -coverprofile=coverage.out ./...
-      - name: Upload coverage
-        uses: codecov/codecov-action@v5
-        with:
-          files: coverage.out
-          fail_ci_if_error: false
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v6
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
