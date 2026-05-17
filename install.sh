@@ -12,11 +12,11 @@ APP=kvlt
 
 # Visual style matches kvlt's `ash` runtime theme so curl|bash and
 # the installed binary share a palette. ACCENT is the dusty-brick
-# (xterm 131, #af5f5f); named by role, not hue, so a future palette
-# swap is one line.
+# (#af5f5f); truecolor (24-bit) so the install banner and the
+# running app paint with the exact same hue.
 MUTED='\033[0;2m'
 RED='\033[0;31m'
-ACCENT='\033[38;5;131m'
+ACCENT='\033[38;2;175;95;95m'
 NC='\033[0m' # reset
 
 err() {
