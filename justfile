@@ -1,4 +1,4 @@
-set allow-duplicate-variables := true
+set allow-duplicate-variables
 
 # Optional modules: import? allows `just fetch` to work before .just/remote/ exists.
 
