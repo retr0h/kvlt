@@ -22,22 +22,35 @@
 
 <p align="center">🔐 Pluggable secrets vault. Local-first. No daemon.</p>
 
-A single-binary secrets vault for projects that don't have HashiCorp
-Vault and don't want one. Encrypts with [age](https://github.com/FiloSottile/age)
-using your existing SSH keys; named vaults give you a stable call
-site (`kvlt get prod API_KEY`) regardless of whether the backend is
-local age files today, AWS Secrets Manager tomorrow.
+A single-binary secrets vault for projects that don't have HashiCorp Vault and
+don't want one. Encrypts with [age](https://github.com/FiloSottile/age) using
+your existing SSH keys; named vaults give you a stable call site
+(`kvlt get prod API_KEY`) regardless of whether the backend is local age files
+today, AWS Secrets Manager tomorrow.
 
 ## ✨ Features
 
-- 🔐 **age + SSH keys** — encrypts with `~/.ssh/id_ed25519.pub`, decrypts with the matching private key. Borrows your existing protection chain (passphrase + ssh-agent + Touch ID via [secretive](https://github.com/maxgoedjen/secretive)); kvlt doesn't reinvent the lock.
-- 🪪 **Named vaults** — `kvlt get prod API_KEY`, never `kvlt get_aws(…)`; the backend is an implementation detail. Switching from local age files to AWS Secrets Manager later doesn't touch a single call site.
-- 🔌 **Pluggable backends** — `Provider` interface + factory registry. AWS Secrets Manager (planned) sits behind a `//go:build aws` guard so the base binary stays dependency-light.
-- 👥 **Multi-recipient** — encrypt to N SSH public keys, any one of those private keys can decrypt. The team-sharing escape hatch.
-- 🤫 **Stdin / TTY input modes** — `echo $VAL | kvlt put` keeps secrets out of shell history; bare `kvlt put` prompts with echo off.
-- 🐚 **Shell-friendly** — `kvlt env vault` for `eval "$(…)"` direnv integration; `kvlt run vault -- cmd` for scoped env injection like `aws-vault exec` / `op run`.
+- 🔐 **age + SSH keys** — encrypts with `~/.ssh/id_ed25519.pub`, decrypts with
+  the matching private key. Borrows your existing protection chain (passphrase +
+  ssh-agent + Touch ID via
+  [secretive](https://github.com/maxgoedjen/secretive)); kvlt doesn't reinvent
+  the lock.
+- 🪪 **Named vaults** — `kvlt get prod API_KEY`, never `kvlt get_aws(…)`; the
+  backend is an implementation detail. Switching from local age files to AWS
+  Secrets Manager later doesn't touch a single call site.
+- 🔌 **Pluggable backends** — `Provider` interface + factory registry. AWS
+  Secrets Manager (planned) sits behind a `//go:build aws` guard so the base
+  binary stays dependency-light.
+- 👥 **Multi-recipient** — encrypt to N SSH public keys, any one of those private
+  keys can decrypt. The team-sharing escape hatch.
+- 🤫 **Stdin / TTY input modes** — `echo $VAL | kvlt put` keeps secrets out of
+  shell history; bare `kvlt put` prompts with echo off.
+- 🐚 **Shell-friendly** — `kvlt env vault` for `eval "$(…)"` direnv integration;
+  `kvlt run vault -- cmd` for scoped env injection like `aws-vault exec` /
+  `op run`.
 - 🚫 **No service, no daemon** — pure CLI; nothing listening, nothing persistent.
-- 📦 **Single static binary** — Go, CGO off, darwin / linux / windows × amd64 / arm64.
+- 📦 **Single static binary** — Go, CGO off, darwin / linux / windows × amd64 /
+  arm64.
 
 ## 📦 Install
 
@@ -45,7 +58,9 @@ local age files today, AWS Secrets Manager tomorrow.
 curl -fsSL https://github.com/retr0h/kvlt/raw/main/install.sh | sh
 ```
 
-Installs to `~/.local/bin` (or `/usr/local/bin` as root) — SHA256 checksums verified. Override with `KVLT_INSTALL_DIR=/some/path` or pin a version with `KVLT_VERSION=1.1.1`.
+Installs to `~/.local/bin` (or `/usr/local/bin` as root) — SHA256 checksums
+verified. Override with `KVLT_INSTALL_DIR=/some/path` or pin a version with
+`KVLT_VERSION=1.1.1`.
 
 ### 🔨 Build from source
 
@@ -85,88 +100,101 @@ Full recipe collection in [docs/recipes.md](docs/recipes.md).
 
 Most secret stuff on a dev laptop is a plaintext file. `~/.aws/credentials`,
 `~/.config/gh/hosts.yml` (your GitHub PAT), `.env` files, npm tokens in
-`~/.npmrc`, GitLab tokens in `~/.config/glab-cli/`, every `.kube/config` —
-all sitting there in plaintext, readable by any process running as you. Once
-malware has user-level execution on your machine, every one of those is
-immediate, no friction.
+`~/.npmrc`, GitLab tokens in `~/.config/glab-cli/`, every `.kube/config` — all
+sitting there in plaintext, readable by any process running as you. Once malware
+has user-level execution on your machine, every one of those is immediate, no
+friction.
 
-The clever bit isn't kvlt — it's **delegating the lock to the SSH
-protection chain**, one of the few credential systems on a dev machine that
-actually has a human-in-the-loop step:
+The clever bit isn't kvlt — it's **delegating the lock to the SSH protection
+chain**, one of the few credential systems on a dev machine that actually has a
+human-in-the-loop step:
 
-| What's on disk                      | Attacker w/ user code-exec does | Result                                     |
-| ----------------------------------- | ------------------------------- | ------------------------------------------ |
-| `~/.aws/credentials` plaintext      | `cat`                           | full AWS access, instantly                 |
-| `.env` with `STRIPE_KEY=…`          | `cat`                           | Stripe access, instantly                   |
-| `gh` / `glab` / `npm` tokens        | `cat`                           | git host access, instantly                 |
-| Key-file vault (key.txt next to blobs) | `cat key.txt && cat blob`       | decrypt, instantly — key file _is_ the secret |
-| **kvlt + passphrase-locked SSH key** | reads `.age` + encrypted key file | **needs the passphrase**                  |
-| **kvlt + ssh-agent (timed unlock)** | tries to decrypt                | needs the passphrase to (re-)unlock the agent |
-| **kvlt + Secretive on macOS**       | tries to decrypt                | **needs your fingerprint** (Touch ID)      |
+| What's on disk                         | Attacker w/ user code-exec does   | Result                                        |
+| -------------------------------------- | --------------------------------- | --------------------------------------------- |
+| `~/.aws/credentials` plaintext         | `cat`                             | full AWS access, instantly                    |
+| `.env` with `STRIPE_KEY=…`             | `cat`                             | Stripe access, instantly                      |
+| `gh` / `glab` / `npm` tokens           | `cat`                             | git host access, instantly                    |
+| Key-file vault (key.txt next to blobs) | `cat key.txt && cat blob`         | decrypt, instantly — key file _is_ the secret |
+| **kvlt + passphrase-locked SSH key**   | reads `.age` + encrypted key file | **needs the passphrase**                      |
+| **kvlt + ssh-agent (timed unlock)**    | tries to decrypt                  | needs the passphrase to (re-)unlock the agent |
+| **kvlt + Secretive on macOS**          | tries to decrypt                  | **needs your fingerprint** (Touch ID)         |
 
 Every kvlt decrypt requires something that **isn't on disk**: your typed
 passphrase, ssh-agent's in-memory unlock state, or a Touch ID prompt routed
-through the Secure Enclave. Reading every file under `$HOME` gets the
-attacker `.age` blobs — useless without the key — and an _encrypted_
-private key file, useless without the passphrase. The credentials never
-exist as plaintext at rest.
+through the Secure Enclave. Reading every file under `$HOME` gets the attacker
+`.age` blobs — useless without the key — and an _encrypted_ private key file,
+useless without the passphrase. The credentials never exist as plaintext at
+rest.
 
 This is why a `.env` -> kvlt swap is a real upgrade, not just a re-shuffle.
-Vault designs that store the encryption key as a sibling text file in
-the repo don't help either — an attacker grabbing the vault grabs the
-key. kvlt moves the key out of the filesystem entirely; what's left on
-disk is useless without something off-disk (your passphrase, the agent's
-unlocked state, your fingerprint).
+Vault designs that store the encryption key as a sibling text file in the repo
+don't help either — an attacker grabbing the vault grabs the key. kvlt moves the
+key out of the filesystem entirely; what's left on disk is useless without
+something off-disk (your passphrase, the agent's unlocked state, your
+fingerprint).
 
 **Honest about the limits:**
 
-- **Cached ssh-agent unlock** — once the agent is unlocked, anything running
-  as you can sign with it. Mitigate with `ssh-add -t 1h` for time-limited
-  caching, or skip the agent entirely on macOS by using
-  [Secretive](https://github.com/maxgoedjen/secretive) (key lives in the
-  Secure Enclave, every signature requires Touch ID).
-- **Keylogger on the box** captures the passphrase the next time you type
-  it. Beyond software's job.
-- **`.age` blobs are still copyable** — an attacker with the blobs can sit
-  on them waiting for a future key compromise. Rotate keys and the
-  underlying secrets when threat-modeling demands it.
+- **Cached ssh-agent unlock** — once the agent is unlocked, anything running as
+  you can sign with it. Mitigate with `ssh-add -t 1h` for time-limited caching,
+  or skip the agent entirely on macOS by using
+  [Secretive](https://github.com/maxgoedjen/secretive) (key lives in the Secure
+  Enclave, every signature requires Touch ID).
+- **Keylogger on the box** captures the passphrase the next time you type it.
+  Beyond software's job.
+- **`.age` blobs are still copyable** — an attacker with the blobs can sit on
+  them waiting for a future key compromise. Rotate keys and the underlying
+  secrets when threat-modeling demands it.
 
-In short: kvlt is exactly as protective as your SSH private key is, which
-is far better than "as protective as a text file in `$HOME`."
+In short: kvlt is exactly as protective as your SSH private key is, which is far
+better than "as protective as a text file in `$HOME`."
 
-Sharing a vault with teammates uses age's multi-recipient model — no
-shared keys, each person decrypts with their own SSH private key.
-Walkthrough in [docs/recipes.md](docs/recipes.md).
+Sharing a vault with teammates uses age's multi-recipient model — no shared
+keys, each person decrypts with their own SSH private key. Walkthrough in
+[docs/recipes.md](docs/recipes.md).
 
 ## ⚙️ How It Works
 
-`kvlt` is a CLI; nothing runs between invocations. Each command opens
-the vault config, talks to the backend, and exits.
+`kvlt` is a CLI; nothing runs between invocations. Each command opens the vault
+config, talks to the backend, and exits.
 
-1. 🪪 **Pick a vault by name** — every verb takes a name (`dev`, `prod`, …); the name resolves to a backend through `.kvlt/vaults/<type>/<id>.yaml`
-2. 🔐 **Default backend is `local` (age + SSH keys)** — `kvlt put` encrypts to one or more SSH public-key recipients via [age](https://github.com/FiloSottile/age); blobs land at `.kvlt/secrets/local_encryption/<vault>/<key>.age`. Decrypt requires the matching SSH private key — passphrase prompt fires on `/dev/tty` if your key isn't in ssh-agent already.
-3. 🔌 **Backends are pluggable** — `Provider` interface + factory registry. Adding AWS Secrets Manager is one new file behind a `//go:build aws` guard; the base binary stays dependency-light.
-4. 🔁 **`migrate` is copy-then-swap** — list keys, copy each value to the new backend, write the new config, delete the old one. Source stays functional until the very last step. (Planned; the backend abstraction supports it cleanly.)
+1. 🪪 **Pick a vault by name** — every verb takes a name (`dev`, `prod`, …); the
+   name resolves to a backend through `.kvlt/vaults/<type>/<id>.yaml`
+2. 🔐 **Default backend is `local` (age + SSH keys)** — `kvlt put` encrypts to
+   one or more SSH public-key recipients via
+   [age](https://github.com/FiloSottile/age); blobs land at
+   `.kvlt/secrets/local_encryption/<vault>/<key>.age`. Decrypt requires the
+   matching SSH private key — passphrase prompt fires on `/dev/tty` if your key
+   isn't in ssh-agent already.
+3. 🔌 **Backends are pluggable** — `Provider` interface + factory registry.
+   Adding AWS Secrets Manager is one new file behind a `//go:build aws` guard;
+   the base binary stays dependency-light.
+4. 🔁 **`migrate` is copy-then-swap** — list keys, copy each value to the new
+   backend, write the new config, delete the old one. Source stays functional
+   until the very last step. (Planned; the backend abstraction supports it
+   cleanly.)
 
-The contract every backend implements is four methods (`Get` / `Put` /
-`List` / `Name`) — small on purpose. Anything fancier is layered on top
-by callers, not pushed into the backend.
+The contract every backend implements is four methods (`Get` / `Put` / `List` /
+`Name`) — small on purpose. Anything fancier is layered on top by callers, not
+pushed into the backend.
 
 ## 💡 Inspiration
 
-- **[age](https://github.com/FiloSottile/age)** — pure-Go, audited, SSH-key-friendly encryption. kvlt is a vault wrapper around it; the crypto is age's.
+- **[age](https://github.com/FiloSottile/age)** — pure-Go, audited,
+  SSH-key-friendly encryption. kvlt is a vault wrapper around it; the crypto is
+  age's.
 
 ## 🔀 Alternatives
 
-| Tool                                                      | Description                                       |
-| --------------------------------------------------------- | ------------------------------------------------- |
-| [HashiCorp Vault](https://www.vaultproject.io/)           | Full-featured secret-management platform          |
-| [OpenBao](https://openbao.org/)                           | Open-source fork of Vault                         |
-| [1Password CLI](https://developer.1password.com/docs/cli) | If you already live in 1Password                  |
-| [pass](https://www.passwordstore.org/)                    | GPG-encrypted files, the Unix way                 |
+| Tool                                                      | Description                              |
+| --------------------------------------------------------- | ---------------------------------------- |
+| [HashiCorp Vault](https://www.vaultproject.io/)           | Full-featured secret-management platform |
+| [OpenBao](https://openbao.org/)                           | Open-source fork of Vault                |
+| [1Password CLI](https://developer.1password.com/docs/cli) | If you already live in 1Password         |
+| [pass](https://www.passwordstore.org/)                    | GPG-encrypted files, the Unix way        |
 
-`kvlt` is meant for the gap below "I need a Vault cluster" and above
-"I have a `.env` file."
+`kvlt` is meant for the gap below "I need a Vault cluster" and above "I have a
+`.env` file."
 
 ## 🗺️ Roadmap
 
@@ -180,19 +208,27 @@ Shipped:
 
 Up next — only what earns its keep:
 
-- [ ] 🤝 **ssh-agent integration** — friction-free decrypt; Touch ID via [Secretive](https://github.com/maxgoedjen/secretive) on macOS without re-prompting per read.
-- [ ] 🔁 **`vault migrate`** — copy-then-swap, named-vault payoff: change backend type without touching call sites.
-- [ ] 🔌 **AWS Secrets Manager backend** (`-tags aws`) — only if a real "dev local → prod cloud" use case shows up. Other tools (Azure Key Vault, 1Password, HashiCorp Vault) are intentionally **not** on the roadmap; if you live in those, use them directly.
+- [ ] 🤝 **ssh-agent integration** — friction-free decrypt; Touch ID via
+  [Secretive](https://github.com/maxgoedjen/secretive) on macOS without
+  re-prompting per read.
+- [ ] 🔁 **`vault migrate`** — copy-then-swap, named-vault payoff: change backend
+  type without touching call sites.
+- [ ] 🔌 **AWS Secrets Manager backend** (`-tags aws`) — only if a real "dev
+  local → prod cloud" use case shows up. Other tools (Azure Key Vault,
+  1Password, HashiCorp Vault) are intentionally **not** on the roadmap; if you
+  live in those, use them directly.
 
 ## 📚 Docs
 
-- [docs/recipes.md](docs/recipes.md) — `.envrc` / `direnv`, `kvlt run`, GitLab + GitHub CI, Unix-pipe patterns, dotfiles, multi-vault setups
-- [docs/architecture.md](docs/architecture.md) — provider interface, on-disk layout, backend internals, migration semantics
+- [docs/recipes.md](docs/recipes.md) — `.envrc` / `direnv`, `kvlt run`, GitLab +
+  GitHub CI, Unix-pipe patterns, dotfiles, multi-vault setups
+- [docs/architecture.md](docs/architecture.md) — provider interface, on-disk
+  layout, backend internals, migration semantics
 - [docs/development.md](docs/development.md) — setup, testing, conventions
 - [docs/contributing.md](docs/contributing.md) — PR workflow
 
 ## 📄 License
 
-The [MIT][] License.
+The [MIT] License.
 
-[MIT]: LICENSE
+[mit]: LICENSE

@@ -34,7 +34,7 @@ For bug fixes, new features, or significant changes:
 2. Create a feature branch (`git checkout -b feat/my-feature`)
 3. Make your changes
 4. Ensure the project builds: `go build -o kvlt .`
-5. Run the linter: `just go::vet`
+5. Run the linter: `just go-vet`
 6. Commit using [Conventional Commits](https://conventionalcommits.org/) format
 7. Push to your fork and open a pull request
 
@@ -73,7 +73,7 @@ go build -o kvlt .
 
 ```bash
 just test        # fmt-check + unit tests with race detector
-just go::unit    # unit tests only
+just go-unit    # unit tests only
 ```
 
 ## Code Style
