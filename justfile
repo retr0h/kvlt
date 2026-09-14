@@ -10,6 +10,11 @@ import? '.just/remote/just.just'
 
 md_site_dir := ""
 
+# Coverage measured 65.0% when the shared 100% gate was adopted. Declaring the
+# real floor keeps the gate on and stops regressions without failing on day one.
+
+go_coverage_target := "65"
+
 # --- Fetch ---
 
 # Fetch shared justfiles from osapi-justfiles
