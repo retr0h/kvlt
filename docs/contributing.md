@@ -57,7 +57,7 @@ docs: clarify migrate copy-then-swap semantics
 
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.27.3+
 - [just](https://github.com/casey/just) — command runner
 - [golangci-lint](https://golangci-lint.run/) — Go linter
 
