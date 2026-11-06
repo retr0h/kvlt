@@ -80,8 +80,13 @@ just go-unit    # unit tests only
 
 - Follow existing patterns in the codebase
 - Multi-line function signatures
-- Backend implementations live under `internal/kvlt/backend_*.go`, behind build
-  tags when they pull in cloud-vendor SDKs — the base binary stays
-  dependency-light
+- Every `.go` file starts with the MIT copyright header
+- Backend implementations live under `pkg/kvlt/backend_*.go`, behind build tags
+  when they pull in cloud-vendor SDKs — the base binary stays dependency-light
+- Construct public types through their `New*` function (`NewLocalProvider`,
+  `NewStore`). The zero value of an exported struct is not meant to be used.
+- A constructor returns the concrete type when there is only one shape
+  (`*LocalProvider`). It returns `Provider` only when the caller should not care
+  which backend is behind it.
 - Errors should name the vault and key (when safe to expose) so an operator can
   act without diffing logs

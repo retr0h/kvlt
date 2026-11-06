@@ -243,6 +243,8 @@ Categories the CLI distinguishes:
 
 - Secret values are **never logged**, even at `--debug`. The `Get` path does not
   pass values through `slog.Debug` calls.
+- Redact at the source. A log filter that strips values after the fact is not a
+  substitute.
 - `List` only returns key names; values are never serialized in list responses.
 - Migration logs include vault name + key count, never key contents.
 
@@ -254,7 +256,8 @@ To add a new backend:
    goreleaser will produce (`//go:build <tag>`).
 2. Expose a `New<Type>Provider(...)` constructor returning the concrete type
    (e.g. `*AWSProvider`); the type implements the `Provider` interface.
-3. Register the backend in the type registry so `kvlt vault create <type>`
+3. Register the backend from an `init()` in its own file with
+   `kvlt.RegisterBackend(typeID, factory)`, so `kvlt vault create <type>`
    recognizes it.
 4. Add a config-validation function for the YAML `settings` block.
 5. Document configuration in this file under "Built-in Backends".
