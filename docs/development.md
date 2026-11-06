@@ -75,6 +75,13 @@ internal/cli/                    # CLI-only helpers (TTY prompt, themed
                                  # output) — never imported by pkg/kvlt
 ```
 
+The CLI imports `pkg/kvlt` the same way an outside Go program would, so it
+exercises the public API on every run. A behavior that a downstream program
+could use (open a vault, read a secret, list keys, migrate backends) belongs in
+`pkg/kvlt/`. A behavior that only makes sense on a terminal (a TTY prompt with
+echo off, colored output, JSON flag handling) belongs in `internal/`. Keep the
+commands thin and never copy logic from the package into them.
+
 Cloud backends sit behind build tags so the base binary has zero third-party
 runtime deps beyond cobra/viper. Operators who want aws-sm can
 `go build -tags aws -o kvlt .` (or use a goreleaser variant build) without
